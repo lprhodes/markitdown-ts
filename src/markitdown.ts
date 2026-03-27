@@ -24,7 +24,10 @@ import {
 import {
   DEFAULT_MAX_BUFFER_SIZE,
   DEFAULT_MAX_UNCOMPRESSED_SIZE,
+  PRIORITY_GENERIC,
+  PRIORITY_SPECIFIC,
 } from './constants.js';
+import { PlainTextConverter } from './converters/plain-text.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -265,6 +268,11 @@ export class MarkItDown implements MarkItDownRegistrar {
   }
 
   private enableBuiltins(): void {
-    // Converters will be registered here as they are implemented.
+    // Generic (priority 10) — tried last
+    this.registerConverter(new PlainTextConverter(), {
+      priority: PRIORITY_GENERIC,
+      extensions: ['.txt', '.text', '.md', '.markdown', '.json', '.jsonl'],
+      mimeTypes: ['text/', 'application/json', 'application/markdown'],
+    });
   }
 }
