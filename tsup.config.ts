@@ -1,0 +1,37 @@
+import { defineConfig } from 'tsup';
+
+export default defineConfig({
+  entry: {
+    index: 'src/index.ts',
+    node: 'src/node.ts',
+  },
+  format: ['esm', 'cjs'],
+  dts: true,
+  sourcemap: true,
+  clean: true,
+  target: 'es2022',
+  external: [
+    'pdfjs-dist',
+    'mammoth',
+    'jszip',
+    'fast-xml-parser',
+    'exceljs',
+    'cheerio',
+    'turndown',
+    'papaparse',
+    'cfb',
+    'chardet',
+    'file-type',
+    'ai',
+    '@ai-sdk/provider',
+    '@azure-rest/ai-document-intelligence',
+    '@azure/identity',
+    'exiftool-vendored',
+    'fluent-ffmpeg',
+    'fs',
+    'fs/promises',
+    'path',
+    'child_process',
+    'stream',
+  ],
+});
