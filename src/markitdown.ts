@@ -30,6 +30,7 @@ import {
 import { PlainTextConverter } from './converters/plain-text.js';
 import { IpynbConverter } from './converters/ipynb.js';
 import { CsvConverter } from './converters/csv.js';
+import { HtmlConverter } from './converters/html.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -288,6 +289,14 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_GENERIC,
       extensions: ['.txt', '.text', '.md', '.markdown', '.json', '.jsonl'],
       mimeTypes: ['text/', 'application/json', 'application/markdown'],
+    });
+
+    // HTML converter — registered after PlainText so it takes priority for HTML content
+    // (higher insertOrder = tried first within same priority level)
+    this.registerConverter(new HtmlConverter(), {
+      priority: PRIORITY_GENERIC,
+      extensions: ['.html', '.htm'],
+      mimeTypes: ['text/html', 'application/xhtml'],
     });
   }
 }

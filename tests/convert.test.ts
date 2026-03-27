@@ -45,3 +45,15 @@ describe('CsvConverter', () => {
     expect(result.markdown).toContain('| 佐藤太郎 | 30 | 東京 |');
   });
 });
+
+describe('HtmlConverter', () => {
+  it('converts HTML blog page', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test_blog.html'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_blog.html', mimetype: 'text/html', charset: 'utf-8' },
+    });
+    expect(result.markdown).toContain('Large language models (LLMs) are powerful tools');
+    expect(result.markdown).toContain('an example where high cost can easily prevent a generic complex');
+  });
+});
