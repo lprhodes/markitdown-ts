@@ -1,0 +1,270 @@
+// src/markitdown.ts
+import type {
+  MarkItDownOptions,
+  ConvertOptions,
+  ConvertResult,
+  StreamInfo,
+  DocumentConverter,
+  InternalConvertOptions,
+  ConverterRegistration,
+  NodeServices,
+  MarkItDownRegistrar,
+} from './types.js';
+import { ConverterRegistry } from './converter-registry.js';
+import { createConverterInputFromBuffer, createConverterInputFromStream } from './converter-input.js';
+import { buildStreamInfo } from './stream-info.js';
+import { normalizeOutput } from './normalize.js';
+import { fileUriToPath, parseDataUri } from './uri-utils.js';
+import {
+  UnsupportedFormatError,
+  FileConversionError,
+  FileTooLargeError,
+  type FailedConversionAttempt,
+} from './errors.js';
+import {
+  DEFAULT_MAX_BUFFER_SIZE,
+  DEFAULT_MAX_UNCOMPRESSED_SIZE,
+} from './constants.js';
+
+export class MarkItDown implements MarkItDownRegistrar {
+  private registry = new ConverterRegistry();
+  private options: Required<
+    Pick<MarkItDownOptions, 'maxBufferSize' | 'maxUncompressedSize'>
+  > & MarkItDownOptions;
+
+  constructor(options: MarkItDownOptions = {}) {
+    this.options = {
+      ...options,
+      maxBufferSize: options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE,
+      maxUncompressedSize: options.maxUncompressedSize ?? DEFAULT_MAX_UNCOMPRESSED_SIZE,
+    };
+
+    if (options.enableBuiltins !== false) {
+      this.enableBuiltins();
+    }
+
+    if (options.plugins) {
+      for (const plugin of options.plugins) {
+        plugin.register(this, {});
+      }
+    }
+  }
+
+  registerConverter(
+    converter: DocumentConverter,
+    options: { priority?: number; extensions: string[]; mimeTypes: string[] },
+  ): void {
+    this.registry.register(converter, options);
+  }
+
+  async convert(source: string, options?: ConvertOptions): Promise<ConvertResult> {
+    if (source.startsWith('data:')) {
+      const { mimetype, charset, data } = parseDataUri(source);
+      return this.convertBuffer(data, {
+        ...options,
+        streamInfo: { mimetype, charset, ...options?.streamInfo },
+      });
+    }
+
+    if (source.startsWith('file:')) {
+      const { path } = fileUriToPath(source);
+      const readFile = this.options.nodeServices?.readFile;
+      if (!readFile) {
+        throw new Error('File path conversion requires nodeServices.readFile to be configured');
+      }
+      const buffer = await readFile(path);
+      const filename = path.split('/').pop();
+      return this.convertBuffer(buffer, {
+        ...options,
+        streamInfo: { filename, localPath: path, ...options?.streamInfo },
+      });
+    }
+
+    if (source.startsWith('http:') || source.startsWith('https:')) {
+      if (!options?.allowUrlFetch) {
+        throw new Error(
+          'URL fetching requires allowUrlFetch: true in options (SSRF protection). ' +
+          'Use convertBuffer() for file uploads instead.',
+        );
+      }
+      const response = await fetch(source, {
+        ...this.options.requestInit,
+        headers: {
+          Accept: 'text/markdown, text/html;q=0.9, text/plain;q=0.8, */*;q=0.1',
+          ...this.options.requestInit?.headers,
+        },
+      });
+      return this.convertResponse(response, {
+        ...options,
+        streamInfo: { url: source, ...options?.streamInfo },
+      });
+    }
+
+    // Assume local file path
+    const readFile = this.options.nodeServices?.readFile;
+    if (!readFile) {
+      throw new Error('File path conversion requires nodeServices.readFile to be configured');
+    }
+    const buffer = await readFile(source);
+    const filename = source.split('/').pop();
+    return this.convertBuffer(buffer, {
+      ...options,
+      streamInfo: { filename, localPath: source, ...options?.streamInfo },
+    });
+  }
+
+  async convertBuffer(buffer: Uint8Array, options?: ConvertOptions): Promise<ConvertResult> {
+    const info = buildStreamInfo(options?.streamInfo ?? {});
+    const input = createConverterInputFromBuffer(buffer, this.options.maxBufferSize);
+    return this.dispatch(input, info, options);
+  }
+
+  async convertStream(
+    stream: ReadableStream<Uint8Array> | NodeJS.ReadableStream,
+    options?: ConvertOptions,
+  ): Promise<ConvertResult> {
+    let webStream: ReadableStream<Uint8Array>;
+    if (stream instanceof ReadableStream) {
+      webStream = stream;
+    } else if (typeof (stream as any).pipe === 'function') {
+      const nodeStream = stream as any;
+      if (typeof nodeStream[Symbol.asyncIterator] === 'function') {
+        const iterable = nodeStream as AsyncIterable<Uint8Array>;
+        webStream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            for await (const chunk of iterable) {
+              controller.enqueue(chunk);
+            }
+            controller.close();
+          },
+        });
+      } else {
+        throw new Error('Unsupported stream type. Pass a Web ReadableStream or Node stream.Readable.');
+      }
+    } else {
+      throw new Error('Unsupported stream type');
+    }
+
+    const info = buildStreamInfo(options?.streamInfo ?? {});
+    const input = createConverterInputFromStream(webStream, this.options.maxBufferSize);
+    return this.dispatch(input, info, options);
+  }
+
+  async convertResponse(response: Response, options?: ConvertOptions): Promise<ConvertResult> {
+    const contentType = response.headers.get('content-type') ?? '';
+    const [mimeRaw, ...params] = contentType.split(';');
+    const mimetype = mimeRaw.trim() || undefined;
+    let charset: string | undefined;
+    for (const param of params) {
+      const [key, val] = param.split('=').map((s) => s.trim());
+      if (key === 'charset' && val) charset = val;
+    }
+
+    const disposition = response.headers.get('content-disposition') ?? '';
+    let filename: string | undefined;
+    const fnMatch = disposition.match(/filename[*]?=(?:UTF-8''|"?)([^";]+)/i);
+    if (fnMatch) filename = decodeURIComponent(fnMatch[1]);
+
+    const buffer = new Uint8Array(await response.arrayBuffer());
+    return this.convertBuffer(buffer, {
+      ...options,
+      streamInfo: {
+        mimetype,
+        charset,
+        filename,
+        url: response.url || undefined,
+        ...options?.streamInfo,
+      },
+    });
+  }
+
+  private buildLlmCaption(): ((buffer: Uint8Array, mimeType: string) => Promise<string>) | undefined {
+    if (this.options.llmCaption) return this.options.llmCaption;
+    if (this.options.llmModel) {
+      return async (buffer: Uint8Array, mimeType: string) => {
+        const { generateText } = await import('ai');
+        const result = await generateText({
+          model: this.options.llmModel!,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: this.options.llmPrompt ?? 'Write a detailed caption for this image.',
+                },
+                {
+                  type: 'image',
+                  image: buffer,
+                  mimeType,
+                },
+              ],
+            },
+          ],
+        });
+        return result.text;
+      };
+    }
+    return undefined;
+  }
+
+  private async dispatch(
+    input: ReturnType<typeof createConverterInputFromBuffer>,
+    info: StreamInfo,
+    options?: ConvertOptions,
+  ): Promise<ConvertResult> {
+    const internalOpts: InternalConvertOptions = {
+      keepDataUris: options?.keepDataUris ?? false,
+      maxBufferSize: this.options.maxBufferSize,
+      maxUncompressedSize: this.options.maxUncompressedSize,
+      llmCaption: this.buildLlmCaption(),
+      nodeServices: this.options.nodeServices ?? {},
+      styleMap: this.options.styleMap,
+      parentConverters: this.registry.getAll(),
+      convertBuffer: (buf, opts) => this.convertBuffer(buf, opts),
+    };
+
+    const guesses: StreamInfo[] = [info];
+    if (info.extension || info.mimetype) {
+      guesses.push({});
+    }
+
+    const failedAttempts: FailedConversionAttempt[] = [];
+    let anyAccepted = false;
+
+    for (const guess of guesses) {
+      const candidates = this.registry.findConverters(guess);
+
+      for (const reg of candidates) {
+        if (!reg.converter.accepts(guess)) continue;
+        anyAccepted = true;
+
+        try {
+          const result = await reg.converter.convert(input, guess, internalOpts);
+          if (result === null) continue;
+
+          return {
+            markdown: normalizeOutput(result.markdown),
+            title: result.title,
+          };
+        } catch (err) {
+          failedAttempts.push({
+            converter: reg.converter.constructor.name,
+            error: err instanceof Error ? err : new Error(String(err)),
+          });
+        }
+      }
+    }
+
+    if (failedAttempts.length > 0) {
+      throw new FileConversionError(failedAttempts);
+    }
+
+    const detail = info.extension ?? info.mimetype ?? info.filename ?? 'unknown';
+    throw new UnsupportedFormatError(detail);
+  }
+
+  private enableBuiltins(): void {
+    // Converters will be registered here as they are implemented.
+  }
+}
