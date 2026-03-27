@@ -28,6 +28,7 @@ import {
   PRIORITY_SPECIFIC,
 } from './constants.js';
 import { PlainTextConverter } from './converters/plain-text.js';
+import { IpynbConverter } from './converters/ipynb.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -268,6 +269,13 @@ export class MarkItDown implements MarkItDownRegistrar {
   }
 
   private enableBuiltins(): void {
+    // Specific (priority 0) — tried first
+    this.registerConverter(new IpynbConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.ipynb'],
+      mimeTypes: ['application/x-ipynb+json'],
+    });
+
     // Generic (priority 10) — tried last
     this.registerConverter(new PlainTextConverter(), {
       priority: PRIORITY_GENERIC,
