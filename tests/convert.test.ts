@@ -32,3 +32,16 @@ describe('IpynbConverter', () => {
     expect(result.markdown).not.toContain('nbformat_minor');
   });
 });
+
+describe('CsvConverter', () => {
+  it('converts CSV with Japanese encoding', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test_mskanji.csv'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_mskanji.csv', charset: 'cp932' },
+    });
+    expect(result.markdown).toContain('| 名前 | 年齢 | 住所 |');
+    expect(result.markdown).toContain('| --- | --- | --- |');
+    expect(result.markdown).toContain('| 佐藤太郎 | 30 | 東京 |');
+  });
+});

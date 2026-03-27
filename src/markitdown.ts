@@ -29,6 +29,7 @@ import {
 } from './constants.js';
 import { PlainTextConverter } from './converters/plain-text.js';
 import { IpynbConverter } from './converters/ipynb.js';
+import { CsvConverter } from './converters/csv.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -274,6 +275,12 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.ipynb'],
       mimeTypes: ['application/x-ipynb+json'],
+    });
+
+    this.registerConverter(new CsvConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.csv'],
+      mimeTypes: ['text/csv', 'application/csv'],
     });
 
     // Generic (priority 10) — tried last
