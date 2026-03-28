@@ -46,6 +46,20 @@ describe('CsvConverter', () => {
   });
 });
 
+describe('DocxConverter', () => {
+  it('converts DOCX file', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.docx'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.docx' },
+    });
+    expect(result.markdown).toContain('314b0a30-5b04-470b-b9f7-eed2c2bec74a');
+    expect(result.markdown).toContain('# Abstract');
+    expect(result.markdown).toContain('# Introduction');
+    expect(result.markdown).toContain('AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation');
+  });
+});
+
 describe('HtmlConverter', () => {
   it('converts HTML blog page', async () => {
     const md = new MarkItDown();

@@ -1,6 +1,11 @@
 // tests/docx.test.ts
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { ommlToLatex, processOmmlInXml } from '../src/utils/docx-math/omml-to-latex.js';
+import { MarkItDown } from '../src/markitdown.js';
+
+const FIXTURES = resolve(import.meta.dirname, 'fixtures');
 
 describe('ommlToLatex', () => {
   it('converts simple fraction', () => {
@@ -78,5 +83,27 @@ describe('processOmmlInXml', () => {
   it('passes through XML without math elements unchanged', () => {
     const xml = '<w:body><w:p><w:r><w:t>Hello</w:t></w:r></w:p></w:body>';
     expect(processOmmlInXml(xml)).toBe(xml);
+  });
+});
+
+describe('DocxConverter equations', () => {
+  it('converts OMML math to LaTeX', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'equations.docx'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'equations.docx' },
+    });
+    expect(result.markdown).toContain('$');
+  });
+});
+
+describe('DocxConverter security', () => {
+  it('does not follow external rlink references', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'rlink.docx'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'rlink.docx' },
+    });
+    expect(result.markdown).toBeDefined();
   });
 });

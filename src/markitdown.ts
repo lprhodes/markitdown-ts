@@ -31,6 +31,7 @@ import { PlainTextConverter } from './converters/plain-text.js';
 import { IpynbConverter } from './converters/ipynb.js';
 import { CsvConverter } from './converters/csv.js';
 import { HtmlConverter } from './converters/html.js';
+import { DocxConverter } from './converters/docx.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -282,6 +283,12 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.csv'],
       mimeTypes: ['text/csv', 'application/csv'],
+    });
+
+    this.registerConverter(new DocxConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.docx'],
+      mimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
     });
 
     // Generic (priority 10) — tried last
