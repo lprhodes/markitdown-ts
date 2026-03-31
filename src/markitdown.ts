@@ -33,6 +33,7 @@ import { CsvConverter } from './converters/csv.js';
 import { HtmlConverter } from './converters/html.js';
 import { DocxConverter } from './converters/docx.js';
 import { RssConverter } from './converters/rss.js';
+import { XlsxConverter } from './converters/xlsx.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -296,6 +297,16 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.rss', '.atom', '.xml'],
       mimeTypes: ['application/rss+xml', 'application/atom+xml', 'text/xml', 'application/xml'],
+    });
+
+    this.registerConverter(new XlsxConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.xlsx', '.xls'],
+      mimeTypes: [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/excel',
+      ],
     });
 
     // Generic (priority 10) — tried last

@@ -60,6 +60,27 @@ describe('DocxConverter', () => {
   });
 });
 
+describe('XlsxConverter', () => {
+  it('converts XLSX file', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.xlsx'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.xlsx' },
+    });
+    expect(result.markdown).toContain('09060124-b5e7-4717-9d07-3c046eb');
+    expect(result.markdown).toContain('6ff4173b-42a5-4784-9b19-f49caff4d93d');
+    expect(result.markdown).toContain('affc7dad-52dc-4b98-9b5d-51e65d8a8ad0');
+  });
+
+  it('throws UnsupportedFormatError for .xls', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.xls'));
+    await expect(
+      md.convertBuffer(buffer, { streamInfo: { filename: 'test.xls' } }),
+    ).rejects.toThrow('Conversion failed');
+  });
+});
+
 describe('RssConverter', () => {
   it('converts RSS feed', async () => {
     const md = new MarkItDown();
