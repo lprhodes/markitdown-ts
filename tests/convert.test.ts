@@ -60,6 +60,20 @@ describe('DocxConverter', () => {
   });
 });
 
+describe('RssConverter', () => {
+  it('converts RSS feed', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test_rss.xml'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_rss.xml', mimetype: 'text/xml' },
+    });
+    expect(result.markdown).toContain('# The Official Microsoft Blog');
+    expect(result.markdown).toContain('## Ignite 2024');
+    expect(result.markdown).not.toContain('<rss');
+    expect(result.markdown).not.toContain('<feed');
+  });
+});
+
 describe('HtmlConverter', () => {
   it('converts HTML blog page', async () => {
     const md = new MarkItDown();

@@ -32,6 +32,7 @@ import { IpynbConverter } from './converters/ipynb.js';
 import { CsvConverter } from './converters/csv.js';
 import { HtmlConverter } from './converters/html.js';
 import { DocxConverter } from './converters/docx.js';
+import { RssConverter } from './converters/rss.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -289,6 +290,12 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.docx'],
       mimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    });
+
+    this.registerConverter(new RssConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.rss', '.atom', '.xml'],
+      mimeTypes: ['application/rss+xml', 'application/atom+xml', 'text/xml', 'application/xml'],
     });
 
     // Generic (priority 10) — tried last
