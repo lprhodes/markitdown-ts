@@ -82,6 +82,30 @@ describe('PDF output comparison', () => {
   }
 });
 
+describe('PDF annotation extraction', () => {
+  it('processes annotations without errors', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.pdf'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.pdf' },
+    });
+    // test.pdf may not have annotations, but the code path should not crash
+    expect(result.markdown).toBeDefined();
+    expect(result.markdown.length).toBeGreaterThan(0);
+  });
+
+  it('handles PDFs gracefully whether they have annotations or not', async () => {
+    const md = new MarkItDown();
+    for (const fixture of ['test.pdf', 'SPARSE-2024-INV-1234_borderless_table.pdf']) {
+      const buffer = readFileSync(resolve(FIXTURES, fixture));
+      const result = await md.convertBuffer(buffer, {
+        streamInfo: { filename: fixture },
+      });
+      expect(result.markdown).toBeDefined();
+    }
+  });
+});
+
 describe('PDF edge cases', () => {
   it('handles scanned/image-based PDF gracefully (may produce empty output)', async () => {
     const fixturePath = resolve(FIXTURES, 'MEDRPT-2024-PAT-3847_medical_report_scan.pdf');

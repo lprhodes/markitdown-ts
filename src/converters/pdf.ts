@@ -498,6 +498,38 @@ function extractSimpleText(
   return lines.join('\n');
 }
 
+/** Annotation type constants from PDF spec */
+const COMMENT_ANNOTATION_TYPES = new Set([1, 3, 9, 10, 11, 12]); // TEXT, FREETEXT, HIGHLIGHT, UNDERLINE, SQUIGGLY, STRIKEOUT
+
+/**
+ * Extract comment-type annotations from a PDF page and format as markdown.
+ */
+async function extractAnnotationComments(page: any): Promise<string | null> {
+  const annotations = await page.getAnnotations({ intent: 'any' });
+  const pageComments: { author: string; text: string; type: string }[] = [];
+
+  for (const annot of annotations) {
+    if (!COMMENT_ANNOTATION_TYPES.has(annot.annotationType)) continue;
+    const text = annot.contentsObj?.str ?? '';
+    if (!text.trim()) continue;
+    const author = annot.titleObj?.str ?? '';
+    const subtype = annot.subtype ?? 'Note';
+    pageComments.push({ author, text: text.trim(), type: subtype });
+  }
+
+  if (pageComments.length === 0) return null;
+
+  let commentSection = '\n\n### Comments\n';
+  for (const c of pageComments) {
+    if (c.author) {
+      commentSection += `- **${c.author}** (${c.type}): ${c.text}\n`;
+    } else {
+      commentSection += `- (${c.type}): ${c.text}\n`;
+    }
+  }
+  return commentSection.trimEnd();
+}
+
 export class PdfConverter implements DocumentConverter {
   accepts(info: StreamInfo): boolean {
     const ext = info.extension?.toLowerCase();
@@ -588,25 +620,29 @@ export class PdfConverter implements DocumentConverter {
               'str' in item,
           );
 
-          if (textItems.length === 0) {
-            continue;
+          if (textItems.length > 0) {
+            // Try spatial analysis first (form/table detection)
+            const words = extractWords(textItems, pageHeight);
+            const formContent = extractFormContentFromWords(words, pageWidth);
+
+            if (formContent !== null) {
+              formPageCount++;
+              if (formContent.trim()) {
+                markdownChunks.push(formContent);
+              }
+            } else {
+              // Fall back to simple text extraction
+              const simpleText = extractSimpleText(textItems, pageHeight);
+              if (simpleText.trim()) {
+                markdownChunks.push(simpleText.trim());
+              }
+            }
           }
 
-          // Try spatial analysis first (form/table detection)
-          const words = extractWords(textItems, pageHeight);
-          const formContent = extractFormContentFromWords(words, pageWidth);
-
-          if (formContent !== null) {
-            formPageCount++;
-            if (formContent.trim()) {
-              markdownChunks.push(formContent);
-            }
-          } else {
-            // Fall back to simple text extraction
-            const simpleText = extractSimpleText(textItems, pageHeight);
-            if (simpleText.trim()) {
-              markdownChunks.push(simpleText.trim());
-            }
+          // Extract annotations/comments
+          const commentSection = await extractAnnotationComments(page);
+          if (commentSection) {
+            markdownChunks.push(commentSection);
           }
         } finally {
           page.cleanup();
