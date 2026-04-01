@@ -79,7 +79,21 @@ export class PptxConverter implements DocumentConverter {
       }
     }
 
-    // 4. Process each slide
+    // 4. Parse comment authors
+    const authorMap = new Map<string, string>();
+    const authorsXml = await this.readZipText(zip, 'ppt/commentAuthors.xml');
+    if (authorsXml) {
+      const authorsDoc = this.parser.parse(authorsXml);
+      const authors = this.ensureArray(
+        authorsDoc?.['p:cmAuthorLst']?.['p:cmAuthor'] ??
+        authorsDoc?.cmAuthorLst?.cmAuthor
+      );
+      for (const a of authors) {
+        authorMap.set(String(a['@_id']), a['@_name'] ?? 'Unknown');
+      }
+    }
+
+    // 5. Process each slide
     let mdContent = '';
     let slideNum = 0;
 
@@ -139,6 +153,34 @@ export class PptxConverter implements DocumentConverter {
         const notesText = this.extractNotesText(notesDoc);
         if (notesText) {
           mdContent += `\n\n### Notes:\n${notesText}`;
+        }
+      }
+
+      // Check for slide comments via relationships
+      for (const [, rel] of slideRelsMap) {
+        if (rel.type.includes('comments')) {
+          const commentPath = rel.target.startsWith('../')
+            ? 'ppt/' + rel.target.slice(3)
+            : rel.target.startsWith('ppt/') ? rel.target : 'ppt/' + rel.target;
+          const commentXml = await this.readZipText(zip, commentPath);
+          if (commentXml) {
+            const commentDoc = this.parser.parse(commentXml);
+            const comments = this.ensureArray(
+              commentDoc?.['p:cmLst']?.['p:cm'] ??
+              commentDoc?.cmLst?.cm
+            );
+            if (comments.length > 0) {
+              mdContent += '\n\n### Comments:\n';
+              for (const cm of comments) {
+                const authorId = String(cm['@_authorId'] ?? '');
+                const author = authorMap.get(authorId) ?? 'Unknown';
+                const text = cm['p:text'] ?? cm.text ?? '';
+                if (text) {
+                  mdContent += `- **${author}**: ${text}\n`;
+                }
+              }
+            }
+          }
         }
       }
     }

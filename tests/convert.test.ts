@@ -89,6 +89,85 @@ describe('PptxConverter', () => {
   });
 });
 
+describe('PptxConverter comments', () => {
+  it('extracts slide comments', async () => {
+    // Create a minimal PPTX with comments using JSZip
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+
+    // Minimal [Content_Types].xml
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>
+  <Override PartName="/ppt/slides/slide1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>
+  <Override PartName="/ppt/comments/comment1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.comments+xml"/>
+  <Override PartName="/ppt/commentAuthors.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.commentAuthors+xml"/>
+</Types>`);
+
+    // _rels/.rels
+    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="ppt/presentation.xml"/>
+</Relationships>`);
+
+    // ppt/presentation.xml
+    zip.file('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst>
+</p:presentation>`);
+
+    // ppt/_rels/presentation.xml.rels
+    zip.file('ppt/_rels/presentation.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+</Relationships>`);
+
+    // ppt/slides/slide1.xml
+    zip.file('ppt/slides/slide1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+  xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld><p:spTree>
+    <p:sp><p:nvSpPr><p:cNvPr id="1" name="Title"/><p:cNvSpPr/><p:nvPr><p:ph type="title"/></p:nvPr></p:nvSpPr>
+      <p:spPr><a:xfrm><a:off x="0" y="0"/></a:xfrm></p:spPr>
+      <p:txBody><a:p><a:r><a:t>Test Slide</a:t></a:r></a:p></p:txBody>
+    </p:sp>
+  </p:spTree></p:cSld>
+</p:sld>`);
+
+    // ppt/slides/_rels/slide1.xml.rels - link to comment file
+    zip.file('ppt/slides/_rels/slide1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="../comments/comment1.xml"/>
+</Relationships>`);
+
+    // ppt/commentAuthors.xml
+    zip.file('ppt/commentAuthors.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:cmAuthorLst xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cmAuthor id="0" name="Jane Reviewer" initials="JR" lastIdx="1" clrIdx="0"/>
+</p:cmAuthorLst>`);
+
+    // ppt/comments/comment1.xml
+    zip.file('ppt/comments/comment1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:cmLst xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cm authorId="0" dt="2024-01-15T10:00:00" idx="1">
+    <p:pos x="100" y="200"/>
+    <p:text>This slide needs more detail - pptx-comment-test-abc123</p:text>
+  </p:cm>
+</p:cmLst>`);
+
+    const buffer = await zip.generateAsync({ type: 'uint8array' });
+    const md = new MarkItDown();
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_comments.pptx' },
+    });
+    expect(result.markdown).toContain('pptx-comment-test-abc123');
+    expect(result.markdown).toContain('Jane Reviewer');
+  });
+});
+
 describe('XlsxConverter', () => {
   it('converts XLSX file', async () => {
     const md = new MarkItDown();
