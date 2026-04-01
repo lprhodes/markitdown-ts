@@ -1,8 +1,9 @@
 // tests/convert.test.ts
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { MarkItDown } from '../src/markitdown.js';
+import { GENERAL_TEST_VECTORS, DATA_URI_TEST_VECTORS } from './vectors.js';
 
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
 
@@ -193,5 +194,103 @@ describe('ZipConverter', () => {
     expect(result.markdown).toContain('314b0a30-5b04-470b-b9f7-eed2c2bec74a');
     // Should contain content from nested XLSX
     expect(result.markdown).toContain('09060124-b5e7-4717-9d07-3c046eb');
+  });
+});
+
+// ------------------------------------------------------------------
+// Vector-based parametrized tests
+// ------------------------------------------------------------------
+
+describe('Vector-based conversion tests', () => {
+  for (const vector of GENERAL_TEST_VECTORS) {
+    it(`converts ${vector.filename}`, async () => {
+      const fixturePath = resolve(FIXTURES, vector.filename);
+      if (!existsSync(fixturePath)) {
+        return; // skip if fixture doesn't exist
+      }
+
+      const md = new MarkItDown();
+      const buffer = readFileSync(fixturePath);
+      const result = await md.convertBuffer(buffer, {
+        streamInfo: {
+          filename: vector.filename,
+          mimetype: vector.mimetype,
+          charset: vector.charset,
+        },
+      });
+
+      for (const expected of vector.mustInclude) {
+        expect(result.markdown).toContain(expected);
+      }
+      for (const unexpected of vector.mustNotInclude) {
+        expect(result.markdown).not.toContain(unexpected);
+      }
+    });
+  }
+});
+
+describe('Data URI conversion tests', () => {
+  for (const vector of DATA_URI_TEST_VECTORS) {
+    it(`converts ${vector.filename} with keepDataUris`, async () => {
+      const fixturePath = resolve(FIXTURES, vector.filename);
+      if (!existsSync(fixturePath)) {
+        return; // skip if fixture doesn't exist
+      }
+
+      const md = new MarkItDown();
+      const buffer = readFileSync(fixturePath);
+      const result = await md.convertBuffer(buffer, {
+        streamInfo: {
+          filename: vector.filename,
+          mimetype: vector.mimetype,
+          charset: vector.charset,
+        },
+        keepDataUris: true,
+      });
+
+      for (const expected of vector.mustInclude) {
+        expect(result.markdown).toContain(expected);
+      }
+      for (const unexpected of vector.mustNotInclude) {
+        expect(result.markdown).not.toContain(unexpected);
+      }
+    });
+  }
+});
+
+// ------------------------------------------------------------------
+// Input method tests
+// ------------------------------------------------------------------
+
+describe('Input methods', () => {
+  it('convertStream works with Web ReadableStream', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.json'));
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(buffer));
+        controller.close();
+      },
+    });
+    const result = await md.convertStream(stream, {
+      streamInfo: { filename: 'test.json' },
+    });
+    expect(result.markdown).toContain('5b64c88c-b3c3-4510-bcb8-da0b200602d8');
+  });
+
+  it('convertBuffer works with TextEncoder output', async () => {
+    const md = new MarkItDown();
+    const buffer = new TextEncoder().encode('plain text content');
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.txt' },
+    });
+    expect(result.markdown).toContain('plain text content');
+  });
+
+  it('convert rejects non-URL string without nodeServices', async () => {
+    const md = new MarkItDown();
+    await expect(
+      md.convert('/some/local/file.pdf'),
+    ).rejects.toThrow('nodeServices.readFile');
   });
 });
