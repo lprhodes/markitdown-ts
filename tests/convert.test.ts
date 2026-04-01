@@ -60,6 +60,20 @@ describe('DocxConverter', () => {
   });
 });
 
+describe('EpubConverter', () => {
+  it('converts EPUB file', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.epub'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.epub' },
+    });
+    expect(result.markdown).toContain('Test Author');
+    expect(result.markdown).toContain('# Chapter 1');
+    expect(result.markdown).toContain('This is a **test** paragraph');
+    expect(result.markdown).toContain('> This is a blockquote for testing');
+  });
+});
+
 describe('PptxConverter', () => {
   it('converts PPTX file', async () => {
     const md = new MarkItDown();

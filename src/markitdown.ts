@@ -35,6 +35,7 @@ import { DocxConverter } from './converters/docx.js';
 import { RssConverter } from './converters/rss.js';
 import { XlsxConverter } from './converters/xlsx.js';
 import { PptxConverter } from './converters/pptx.js';
+import { EpubConverter } from './converters/epub.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -314,6 +315,12 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.pptx'],
       mimeTypes: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+    });
+
+    this.registerConverter(new EpubConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.epub'],
+      mimeTypes: ['application/epub+zip', 'application/epub', 'application/x-epub+zip'],
     });
 
     // Generic (priority 10) — tried last
