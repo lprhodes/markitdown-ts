@@ -45,3 +45,66 @@ describe('SSRF protection', () => {
     ).rejects.toThrow('allowUrlFetch');
   });
 });
+
+describe('Path traversal prevention', () => {
+  it('sanitizes path traversal in ZIP entries', async () => {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    zip.file('../../etc/passwd', 'malicious content');
+    zip.file('normal.txt', 'safe content');
+    const buffer = await zip.generateAsync({ type: 'uint8array' });
+
+    const md = new MarkItDown();
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.zip' },
+    });
+
+    // Should not have the traversal path in output
+    expect(result.markdown).not.toContain('../../etc/passwd');
+    // Should still process the safe file
+    expect(result.markdown).toContain('safe content');
+  });
+
+  it('rejects absolute paths in ZIP entries', async () => {
+    const JSZip = (await import('jszip')).default;
+    const zip = new JSZip();
+    zip.file('/etc/shadow', 'root:x:0:0');
+    zip.file('readme.txt', 'hello');
+    const buffer = await zip.generateAsync({ type: 'uint8array' });
+
+    const md = new MarkItDown();
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.zip' },
+    });
+
+    expect(result.markdown).not.toContain('/etc/shadow');
+    expect(result.markdown).toContain('hello');
+  });
+});
+
+describe('Script injection in HTML', () => {
+  it('strips script tags', async () => {
+    const md = new MarkItDown();
+    const html = '<p>Hello</p><script>alert("xss")</script><p>World</p>';
+    const buffer = new TextEncoder().encode(html);
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { mimetype: 'text/html' },
+    });
+    expect(result.markdown).not.toContain('<script');
+    expect(result.markdown).not.toContain('alert');
+    expect(result.markdown).toContain('Hello');
+    expect(result.markdown).toContain('World');
+  });
+
+  it('strips style tags', async () => {
+    const md = new MarkItDown();
+    const html = '<style>body { background: red; }</style><p>Content</p>';
+    const buffer = new TextEncoder().encode(html);
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { mimetype: 'text/html' },
+    });
+    expect(result.markdown).not.toContain('<style');
+    expect(result.markdown).not.toContain('background');
+    expect(result.markdown).toContain('Content');
+  });
+});
