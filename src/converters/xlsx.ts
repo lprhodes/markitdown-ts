@@ -93,6 +93,32 @@ export class XlsxConverter implements DocumentConverter {
         mdContent += '| ' + rows[i].join(' | ') + ' |\n';
       }
 
+      // Extract cell comments/notes
+      const comments: { cell: string; text: string }[] = [];
+      worksheet.eachRow((row, rowNumber) => {
+        row.eachCell((cell, colNumber) => {
+          if (cell.note) {
+            const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
+            let text: string;
+            if (typeof cell.note === 'string') {
+              text = cell.note;
+            } else {
+              text = ((cell.note as any).texts || []).map((t: any) => t.text).join('');
+            }
+            if (text.trim()) {
+              comments.push({ cell: cellRef, text: text.trim() });
+            }
+          }
+        });
+      });
+
+      if (comments.length > 0) {
+        mdContent += '\n### Comments\n';
+        for (const c of comments) {
+          mdContent += `- **${c.cell}**: ${c.text}\n`;
+        }
+      }
+
       mdContent += '\n';
     });
 

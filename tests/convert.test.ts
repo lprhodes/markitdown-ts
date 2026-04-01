@@ -110,6 +110,27 @@ describe('XlsxConverter', () => {
   });
 });
 
+describe('XlsxConverter comments', () => {
+  it('extracts cell comments/notes', async () => {
+    // Create an XLSX with comments programmatically using ExcelJS
+    const ExcelJS = await import('exceljs');
+    const workbook = new ExcelJS.default.Workbook();
+    const sheet = workbook.addWorksheet('Sheet1');
+    sheet.addRow(['Name', 'Value']);
+    sheet.addRow(['Alpha', '100']);
+    // Add a comment to cell B2
+    sheet.getCell('B2').note = 'This value needs review - markitdown-comment-test';
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const md = new MarkItDown();
+    const result = await md.convertBuffer(new Uint8Array(buffer as ArrayBuffer), {
+      streamInfo: { filename: 'test_comments.xlsx' },
+    });
+    expect(result.markdown).toContain('markitdown-comment-test');
+    expect(result.markdown).toContain('B2');
+  });
+});
+
 describe('RssConverter', () => {
   it('converts RSS feed', async () => {
     const md = new MarkItDown();
