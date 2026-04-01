@@ -145,3 +145,53 @@ describe('HtmlConverter', () => {
     expect(result.markdown).toContain('an example where high cost can easily prevent a generic complex');
   });
 });
+
+describe('ImageConverter', () => {
+  it('converts image with basic metadata', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.jpg'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.jpg' },
+    });
+    expect(result.markdown).toContain('test.jpg');
+  });
+});
+
+describe('AudioConverter', () => {
+  it('converts audio file with minimal output', async () => {
+    const md = new MarkItDown();
+    const buffer = new Uint8Array(100); // dummy audio
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.mp3', mimetype: 'audio/mpeg' },
+    });
+    expect(result.markdown).toContain('test.mp3');
+  });
+});
+
+describe('OutlookMsgConverter', () => {
+  it('converts MSG file', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test_outlook_msg.msg'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_outlook_msg.msg' },
+    });
+    expect(result.markdown).toContain('# Email Message');
+    expect(result.markdown).toContain('test.sender@example.com');
+    expect(result.markdown).toContain('test.recipient@example.com');
+    expect(result.markdown).toContain('Test Email Message');
+  });
+});
+
+describe('ZipConverter', () => {
+  it('converts ZIP with nested documents', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test_files.zip'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_files.zip' },
+    });
+    // Should contain content from nested DOCX
+    expect(result.markdown).toContain('314b0a30-5b04-470b-b9f7-eed2c2bec74a');
+    // Should contain content from nested XLSX
+    expect(result.markdown).toContain('09060124-b5e7-4717-9d07-3c046eb');
+  });
+});

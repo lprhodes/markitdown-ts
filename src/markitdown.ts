@@ -37,6 +37,11 @@ import { XlsxConverter } from './converters/xlsx.js';
 import { PptxConverter } from './converters/pptx.js';
 import { EpubConverter } from './converters/epub.js';
 import { PdfConverter } from './converters/pdf.js';
+import { ImageConverter } from './converters/image.js';
+import { AudioConverter } from './converters/audio.js';
+import { OutlookMsgConverter } from './converters/outlook-msg.js';
+import { ZipConverter } from './converters/zip.js';
+import { DocumentIntelligenceConverter } from './converters/doc-intel.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -277,6 +282,28 @@ export class MarkItDown implements MarkItDownRegistrar {
   }
 
   private enableBuiltins(): void {
+    // Document Intelligence (only if configured) — PRIORITY_GENERIC but checked first for configured file types
+    if (this.options.docintelEndpoint) {
+      try {
+        const fileTypes = this.options.docintelFileTypes as any[] | undefined;
+        this.registerConverter(
+          new DocumentIntelligenceConverter({
+            endpoint: this.options.docintelEndpoint,
+            credential: this.options.docintelCredential,
+            apiVersion: this.options.docintelApiVersion,
+            fileTypes,
+          }),
+          {
+            priority: PRIORITY_GENERIC,
+            extensions: ['.pdf', '.docx', '.pptx', '.xlsx', '.html', '.jpg', '.jpeg', '.png', '.bmp', '.tiff'],
+            mimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/bmp', 'image/tiff'],
+          },
+        );
+      } catch {
+        // Azure SDK not available — skip Document Intelligence registration
+      }
+    }
+
     // Specific (priority 0) — tried first
     this.registerConverter(new IpynbConverter(), {
       priority: PRIORITY_SPECIFIC,
@@ -328,6 +355,30 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.pdf'],
       mimeTypes: ['application/pdf'],
+    });
+
+    this.registerConverter(new ImageConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.svg'],
+      mimeTypes: ['image/jpeg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff', 'image/webp', 'image/svg'],
+    });
+
+    this.registerConverter(new AudioConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.wma', '.mp4'],
+      mimeTypes: ['audio/x-wav', 'audio/mpeg', 'audio/mp4', 'audio/ogg', 'audio/flac', 'audio/aac', 'video/mp4'],
+    });
+
+    this.registerConverter(new OutlookMsgConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.msg'],
+      mimeTypes: ['application/vnd.ms-outlook'],
+    });
+
+    this.registerConverter(new ZipConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.zip'],
+      mimeTypes: ['application/zip'],
     });
 
     // Generic (priority 10) — tried last
