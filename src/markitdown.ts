@@ -34,6 +34,7 @@ import { HtmlConverter } from './converters/html.js';
 import { DocxConverter } from './converters/docx.js';
 import { RssConverter } from './converters/rss.js';
 import { XlsxConverter } from './converters/xlsx.js';
+import { PptxConverter } from './converters/pptx.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -307,6 +308,12 @@ export class MarkItDown implements MarkItDownRegistrar {
         'application/vnd.ms-excel',
         'application/excel',
       ],
+    });
+
+    this.registerConverter(new PptxConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.pptx'],
+      mimeTypes: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
     });
 
     // Generic (priority 10) — tried last

@@ -60,6 +60,20 @@ describe('DocxConverter', () => {
   });
 });
 
+describe('PptxConverter', () => {
+  it('converts PPTX file', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.pptx'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.pptx' },
+    });
+    expect(result.markdown).toContain('2cdda5c8-e50e-4db4-b5f0-9722a649f455');
+    expect(result.markdown).toContain('04191ea8-5c73-4215-a1d3-1cfb43aaaf12');
+    expect(result.markdown).toContain('44bf7d06-5e7a-4a40-a2e1-a2e42ef28c8a');
+    expect(result.markdown).toContain('AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation');
+  });
+});
+
 describe('XlsxConverter', () => {
   it('converts XLSX file', async () => {
     const md = new MarkItDown();
