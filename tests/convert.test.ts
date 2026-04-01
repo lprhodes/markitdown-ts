@@ -123,6 +123,17 @@ describe('RssConverter', () => {
   });
 });
 
+describe('PdfConverter', () => {
+  it('converts PDF file', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test.pdf'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test.pdf' },
+    });
+    expect(result.markdown).toContain('While there is contemporaneous exploration of multi-agent approaches');
+  });
+});
+
 describe('HtmlConverter', () => {
   it('converts HTML blog page', async () => {
     const md = new MarkItDown();

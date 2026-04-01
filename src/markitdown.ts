@@ -36,6 +36,7 @@ import { RssConverter } from './converters/rss.js';
 import { XlsxConverter } from './converters/xlsx.js';
 import { PptxConverter } from './converters/pptx.js';
 import { EpubConverter } from './converters/epub.js';
+import { PdfConverter } from './converters/pdf.js';
 
 export class MarkItDown implements MarkItDownRegistrar {
   private registry = new ConverterRegistry();
@@ -321,6 +322,12 @@ export class MarkItDown implements MarkItDownRegistrar {
       priority: PRIORITY_SPECIFIC,
       extensions: ['.epub'],
       mimeTypes: ['application/epub+zip', 'application/epub', 'application/x-epub+zip'],
+    });
+
+    this.registerConverter(new PdfConverter(), {
+      priority: PRIORITY_SPECIFIC,
+      extensions: ['.pdf'],
+      mimeTypes: ['application/pdf'],
     });
 
     // Generic (priority 10) — tried last
