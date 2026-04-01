@@ -43,7 +43,62 @@ export class DocxConverter implements DocumentConverter {
     const result = await mammoth.convertToHtml(mammothOpts);
 
     // Convert HTML to Markdown
-    return this.htmlConverter.convertHtml(result.value, opts.keepDataUris);
+    const mdResult = await this.htmlConverter.convertHtml(result.value, opts.keepDataUris);
+    if (!mdResult) return null;
+
+    // Extract comments from word/comments.xml
+    const zip = await JSZip.default.loadAsync(buffer);
+    const commentsSection = await this.extractComments(zip);
+    if (commentsSection) {
+      mdResult.markdown = mdResult.markdown + '\n\n' + commentsSection;
+    }
+
+    return mdResult;
+  }
+
+  private async extractComments(zip: any): Promise<string | null> {
+    const commentsFile = zip.file('word/comments.xml');
+    if (!commentsFile) return null;
+
+    const xml = await commentsFile.async('string');
+
+    // Parse comment elements using regex (simple and reliable for this structure)
+    const commentRegex = /<w:comment\b[^>]*>([\s\S]*?)<\/w:comment>/g;
+    const comments: { author: string; text: string }[] = [];
+
+    let match;
+    while ((match = commentRegex.exec(xml)) !== null) {
+      const commentBlock = match[0];
+
+      // Extract author
+      const authorMatch = commentBlock.match(/w:author="([^"]*)"/);
+      const author = authorMatch?.[1] ?? '';
+
+      // Extract text content from w:t elements
+      const textParts: string[] = [];
+      const textRegex = /<w:t[^>]*>([^<]*)<\/w:t>/g;
+      let textMatch;
+      while ((textMatch = textRegex.exec(commentBlock)) !== null) {
+        textParts.push(textMatch[1]);
+      }
+      const text = textParts.join('').trim();
+
+      if (text) {
+        comments.push({ author, text });
+      }
+    }
+
+    if (comments.length === 0) return null;
+
+    let section = '### Comments\n';
+    for (const c of comments) {
+      if (c.author) {
+        section += `- **${c.author}**: ${c.text}\n`;
+      } else {
+        section += `- ${c.text}\n`;
+      }
+    }
+    return section.trimEnd();
   }
 
   private async preProcessDocx(

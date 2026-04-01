@@ -97,6 +97,18 @@ describe('DocxConverter equations', () => {
   });
 });
 
+describe('DocxConverter comments', () => {
+  it('extracts comments from word/comments.xml', async () => {
+    const md = new MarkItDown();
+    const buffer = readFileSync(resolve(FIXTURES, 'test_with_comment.docx'));
+    const result = await md.convertBuffer(buffer, {
+      streamInfo: { filename: 'test_with_comment.docx' },
+    });
+    expect(result.markdown).toContain('This is a test comment. 12df-321a');
+    expect(result.markdown).toContain('Yet another comment in the doc. 55yiyi-asd09');
+  });
+});
+
 describe('DocxConverter security', () => {
   it('does not follow external rlink references', async () => {
     const md = new MarkItDown();
