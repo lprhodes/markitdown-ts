@@ -64,16 +64,48 @@ pnpm add papaparse                     # CSV
 
 ## Usage
 
-### Basic: Convert a Buffer (Edge/Node)
+### Convert a File Path (Node.js)
 
 ```typescript
-import { MarkItDown } from '@lprhodes/markitdown-ts';
+import { markitdown } from '@lprhodes/markitdown-ts';
+import { createFsReader } from '@lprhodes/markitdown-ts/node';
 
-const md = new MarkItDown();
+const result = await markitdown('/path/to/report.pdf', {
+  nodeServices: { readFile: createFsReader() },
+});
 
-// From a file upload (e.g. in an API route)
-const buffer = new Uint8Array(await file.arrayBuffer());
-const result = await md.convertBuffer(buffer, {
+console.log(result.markdown);
+```
+
+### Convert a URL
+
+```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+
+const result = await markitdown('https://example.com/document.docx', {
+  allowUrlFetch: true,
+});
+
+console.log(result.markdown);
+```
+
+### Convert a Vercel Blob
+
+```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+
+// Blob URLs are regular https URLs -- just pass them in
+const result = await markitdown(blobUrl, { allowUrlFetch: true });
+
+console.log(result.markdown);
+```
+
+### Convert a Buffer
+
+```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+
+const result = await markitdown(buffer, {
   streamInfo: { filename: 'report.pdf' },
 });
 
@@ -83,141 +115,32 @@ console.log(result.markdown);
 ### Convert a fetch Response
 
 ```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+
 const response = await fetch('https://example.com/document.docx');
-const result = await md.convertResponse(response);
+const result = await markitdown(response);
 
 console.log(result.markdown);
-```
-
-### Convert a ReadableStream
-
-```typescript
-const result = await md.convertStream(readableStream, {
-  streamInfo: { filename: 'data.csv' },
-});
-```
-
-### Node.js: Read from Filesystem
-
-```typescript
-import { MarkItDown } from '@lprhodes/markitdown-ts';
-import { createFsReader } from '@lprhodes/markitdown-ts/node';
-
-const md = new MarkItDown({
-  nodeServices: {
-    readFile: createFsReader(),
-  },
-});
-
-const result = await md.convert('/path/to/document.pdf');
-```
-
-### Node.js: EXIF Metadata for Images
-
-```typescript
-import { createFsReader, createExiftoolReader } from '@lprhodes/markitdown-ts/node';
-
-const md = new MarkItDown({
-  nodeServices: {
-    readFile: createFsReader(),
-    exiftool: createExiftoolReader(),
-  },
-});
-
-const result = await md.convert('/path/to/photo.jpg');
-// Markdown includes EXIF metadata (camera, GPS, date, etc.)
-```
-
-### LLM Image Captioning (AI SDK)
-
-```typescript
-import { MarkItDown } from '@lprhodes/markitdown-ts';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-
-const google = createGoogleGenerativeAI({ apiKey: '...' });
-
-const md = new MarkItDown({
-  llmModel: google('gemini-2.0-flash'),
-  llmPrompt: 'Describe this image in detail for use as context in a conversation.',
-});
-
-const result = await md.convertBuffer(imageBuffer, {
-  streamInfo: { filename: 'diagram.png' },
-});
-// Markdown includes AI-generated image description
-```
-
-### LLM Image Captioning (Custom Callback)
-
-```typescript
-const md = new MarkItDown({
-  llmCaption: async (buffer, mimeType) => {
-    // Use any vision API
-    const description = await myVisionApi.describe(buffer, mimeType);
-    return description;
-  },
-});
 ```
 
 ### Next.js API Route (Edge Runtime)
 
 ```typescript
 // app/api/convert/route.ts
-import { MarkItDown } from '@lprhodes/markitdown-ts';
+import { markitdown } from '@lprhodes/markitdown-ts';
 
 export const runtime = 'edge';
-
-const md = new MarkItDown();
 
 export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get('file') as File;
 
   const buffer = new Uint8Array(await file.arrayBuffer());
-  const result = await md.convertBuffer(buffer, {
+  const result = await markitdown(buffer, {
     streamInfo: { filename: file.name },
   });
 
   return Response.json({ markdown: result.markdown });
-}
-```
-
-### Vercel Blob (Unknown File Type)
-
-```typescript
-import { MarkItDown } from '@lprhodes/markitdown-ts';
-import { head } from '@vercel/blob';
-
-const md = new MarkItDown();
-
-async function convertBlob(blobUrl: string) {
-  // Get blob metadata -- contentType and pathname are set by Vercel Blob
-  const blobInfo = await head(blobUrl);
-
-  // Fetch the blob content
-  const response = await fetch(blobUrl);
-  const buffer = new Uint8Array(await response.arrayBuffer());
-
-  // Let markitdown detect the format from the content type and filename
-  const result = await md.convertBuffer(buffer, {
-    streamInfo: {
-      filename: blobInfo.pathname,
-      mimetype: blobInfo.contentType,
-    },
-  });
-
-  return result.markdown;
-}
-```
-
-Or use `convertResponse` directly to let markitdown extract metadata from the response headers:
-
-```typescript
-async function convertBlob(blobUrl: string) {
-  const response = await fetch(blobUrl);
-  const result = await md.convertResponse(response);
-
-  return result.markdown;
 }
 ```
 
@@ -226,30 +149,81 @@ async function convertBlob(blobUrl: string) {
 ```typescript
 import express from 'express';
 import multer from 'multer';
-import { MarkItDown } from '@lprhodes/markitdown-ts';
-import { createFsReader, createExiftoolReader } from '@lprhodes/markitdown-ts/node';
+import { markitdown } from '@lprhodes/markitdown-ts';
 
 const upload = multer({ storage: multer.memoryStorage() });
-const md = new MarkItDown({
-  nodeServices: {
-    readFile: createFsReader(),
-    exiftool: createExiftoolReader(),
-  },
-});
 
 app.post('/convert', upload.single('file'), async (req, res) => {
-  const result = await md.convertBuffer(req.file.buffer, {
+  const result = await markitdown(req.file.buffer, {
     streamInfo: { filename: req.file.originalname },
   });
   res.json({ markdown: result.markdown });
 });
 ```
 
+### With LLM Image Captioning
+
+```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
+
+const google = createGoogleGenerativeAI({ apiKey: '...' });
+
+const result = await markitdown('/path/to/photo.jpg', {
+  nodeServices: { readFile: createFsReader() },
+  llmModel: google('gemini-2.0-flash'),
+  llmPrompt: 'Describe this image in detail.',
+});
+```
+
+Or with a custom callback:
+
+```typescript
+const result = await markitdown(imageBuffer, {
+  streamInfo: { filename: 'diagram.png' },
+  llmCaption: async (buffer, mimeType) => {
+    return await myVisionApi.describe(buffer, mimeType);
+  },
+});
+```
+
+### With EXIF Metadata (Node.js)
+
+```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+import { createFsReader, createExiftoolReader } from '@lprhodes/markitdown-ts/node';
+
+const result = await markitdown('/path/to/photo.jpg', {
+  nodeServices: {
+    readFile: createFsReader(),
+    exiftool: createExiftoolReader(),
+  },
+});
+// Markdown includes EXIF metadata (camera, GPS, date, etc.)
+```
+
+### Using the Class API
+
+For repeated conversions or when you need to register custom converters, use the `MarkItDown` class directly to avoid re-initialising on every call:
+
+```typescript
+import { MarkItDown } from '@lprhodes/markitdown-ts';
+import { createFsReader } from '@lprhodes/markitdown-ts/node';
+
+const md = new MarkItDown({
+  nodeServices: { readFile: createFsReader() },
+});
+
+const pdf = await md.convert('/path/to/report.pdf');
+const docx = await md.convert('/path/to/document.docx');
+const url = await md.convert('https://example.com/file.xlsx', { allowUrlFetch: true });
+```
+
 ### Custom Converter Plugin
 
 ```typescript
 import type { MarkItDownPlugin, MarkItDownRegistrar, DocumentConverter } from '@lprhodes/markitdown-ts';
-import { PRIORITY_SPECIFIC } from '@lprhodes/markitdown-ts';
+import { MarkItDown, PRIORITY_SPECIFIC } from '@lprhodes/markitdown-ts';
 
 class YamlConverter implements DocumentConverter {
   accepts(info) {
@@ -276,23 +250,22 @@ const yamlPlugin: MarkItDownPlugin = {
 };
 
 const md = new MarkItDown({ plugins: [yamlPlugin] });
+const result = await md.convert('/path/to/config.yaml');
 ```
 
 ## Error Handling
 
 ```typescript
 import {
-  MarkItDown,
+  markitdown,
   MissingDependencyError,
   UnsupportedFormatError,
   FileConversionError,
   FileTooLargeError,
 } from '@lprhodes/markitdown-ts';
 
-const md = new MarkItDown();
-
 try {
-  const result = await md.convertBuffer(buffer, {
+  const result = await markitdown(buffer, {
     streamInfo: { filename: 'file.pdf' },
   });
 } catch (err) {
@@ -315,11 +288,12 @@ try {
 
 ## Configuration
 
-```typescript
-const md = new MarkItDown({
-  // Disable built-in converters (register your own)
-  enableBuiltins: false,
+All options can be passed to both `markitdown()` and `new MarkItDown()`:
 
+```typescript
+import { markitdown } from '@lprhodes/markitdown-ts';
+
+const result = await markitdown('/path/to/file.docx', {
   // Size limits
   maxBufferSize: 50 * 1024 * 1024,       // 50MB (default: 100MB)
   maxUncompressedSize: 100 * 1024 * 1024, // 100MB (default: 200MB)
