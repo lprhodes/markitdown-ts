@@ -131,7 +131,21 @@ export class MarkItDown implements MarkItDownRegistrar {
   }
 
   async convertBuffer(buffer: Uint8Array, options?: ConvertOptions): Promise<ConvertResult> {
-    const info = buildStreamInfo(options?.streamInfo ?? {});
+    let info = buildStreamInfo(options?.streamInfo ?? {});
+
+    // If no extension or mimetype was provided, try to detect from magic bytes
+    if (!info.extension && !info.mimetype) {
+      try {
+        const { fileTypeFromBuffer } = await import('file-type');
+        const detected = await fileTypeFromBuffer(buffer);
+        if (detected) {
+          info = buildStreamInfo({ ...info, mimetype: detected.mime, extension: '.' + detected.ext });
+        }
+      } catch {
+        // file-type not installed — proceed without detection
+      }
+    }
+
     const input = createConverterInputFromBuffer(buffer, this.options.maxBufferSize);
     return this.dispatch(input, info, options);
   }

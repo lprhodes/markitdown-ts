@@ -100,12 +100,18 @@ const result = await markitdown(blobUrl, { allowUrlFetch: true });
 console.log(result.markdown);
 ```
 
-### Convert a Buffer
+### Convert an Axios Response
 
 ```typescript
+import axios from 'axios';
 import { markitdown } from '@lprhodes/markitdown-ts';
 
-const result = await markitdown(buffer, { filename: 'report.pdf' });
+const response = await axios.get('https://example.com/report.pdf', {
+  responseType: 'arraybuffer',
+});
+
+// Format is auto-detected from response headers
+const result = await markitdown(response);
 
 console.log(result.markdown);
 ```
@@ -121,6 +127,23 @@ const result = await markitdown(response);
 console.log(result.markdown);
 ```
 
+### Convert a Buffer
+
+When passing a raw buffer, the format is auto-detected from magic bytes (requires `file-type` peer dep). You can also specify the type explicitly:
+
+```typescript
+import { markitdown, FileType } from '@lprhodes/markitdown-ts';
+
+// Auto-detected (install file-type: pnpm add file-type)
+const result = await markitdown(buffer);
+
+// Or specify the type explicitly
+const result = await markitdown(buffer, { type: FileType.PDF });
+
+// String values work too
+const result = await markitdown(buffer, { type: 'pdf' });
+```
+
 ### Next.js API Route (Edge Runtime)
 
 ```typescript
@@ -133,8 +156,9 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get('file') as File;
 
-  const buffer = new Uint8Array(await file.arrayBuffer());
-  const result = await markitdown(buffer, { filename: file.name });
+  const result = await markitdown(new Uint8Array(await file.arrayBuffer()), {
+    type: file.name.split('.').pop() as FileType,
+  });
 
   return Response.json({ markdown: result.markdown });
 }
@@ -150,7 +174,8 @@ import { markitdown } from '@lprhodes/markitdown-ts';
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.post('/convert', upload.single('file'), async (req, res) => {
-  const result = await markitdown(req.file.buffer, { filename: req.file.originalname });
+  // file-type auto-detects the format from the buffer
+  const result = await markitdown(req.file.buffer);
   res.json({ markdown: result.markdown });
 });
 ```
@@ -160,6 +185,7 @@ app.post('/convert', upload.single('file'), async (req, res) => {
 ```typescript
 import { markitdown } from '@lprhodes/markitdown-ts';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createFsReader } from '@lprhodes/markitdown-ts/node';
 
 const google = createGoogleGenerativeAI({ apiKey: '...' });
 
@@ -174,7 +200,7 @@ Or with a custom callback:
 
 ```typescript
 const result = await markitdown(imageBuffer, {
-  filename: 'diagram.png',
+  type: 'png',
   llmCaption: async (buffer, mimeType) => {
     return await myVisionApi.describe(buffer, mimeType);
   },
@@ -259,7 +285,7 @@ import {
 } from '@lprhodes/markitdown-ts';
 
 try {
-  const result = await markitdown(buffer, { filename: 'file.pdf' });
+  const result = await markitdown(buffer, { type: 'pdf' });
 } catch (err) {
   if (err instanceof MissingDependencyError) {
     // e.g. "Missing dependency: pdfjs-dist. Install it with: pnpm add pdfjs-dist"

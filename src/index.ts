@@ -4,51 +4,140 @@ import type { MarkItDownOptions, ConvertOptions, ConvertResult } from './types.j
 
 export { MarkItDown };
 
+export enum FileType {
+  PDF = 'pdf',
+  DOCX = 'docx',
+  XLSX = 'xlsx',
+  XLS = 'xls',
+  PPTX = 'pptx',
+  HTML = 'html',
+  CSV = 'csv',
+  EPUB = 'epub',
+  RSS = 'rss',
+  ATOM = 'atom',
+  XML = 'xml',
+  IPYNB = 'ipynb',
+  JSON = 'json',
+  JSONL = 'jsonl',
+  TXT = 'txt',
+  MD = 'md',
+  MSG = 'msg',
+  ZIP = 'zip',
+  JPG = 'jpg',
+  JPEG = 'jpeg',
+  PNG = 'png',
+  GIF = 'gif',
+  BMP = 'bmp',
+  TIFF = 'tiff',
+  WEBP = 'webp',
+  SVG = 'svg',
+  MP3 = 'mp3',
+  WAV = 'wav',
+  M4A = 'm4a',
+  OGG = 'ogg',
+  FLAC = 'flac',
+  AAC = 'aac',
+  WMA = 'wma',
+  MP4 = 'mp4',
+}
+
 export interface MarkItDownInput extends MarkItDownOptions {
-  /** Filename hint for format detection (e.g. 'report.pdf') */
-  filename?: string;
-  /** MIME type hint (e.g. 'application/pdf') */
-  mimetype?: string;
-  /** Character encoding hint (e.g. 'utf-8') */
-  charset?: string;
+  /** File type hint for format detection. Auto-detected from file paths, URLs, and response headers when not provided. */
+  type?: FileType | `${FileType}`;
   /** Preserve base64 data URIs in output (default: false) */
   keepDataUris?: boolean;
   /** Allow fetching http/https URLs (default: false, SSRF protection) */
   allowUrlFetch?: boolean;
 }
 
+/** Duck-type check for Axios-style responses */
+interface AxiosLikeResponse {
+  data: ArrayBuffer | Uint8Array | Buffer;
+  headers: Record<string, unknown> & {
+    'content-type'?: string;
+    'content-disposition'?: string;
+  };
+  config?: { url?: string };
+}
+
+function isAxiosLike(source: unknown): source is AxiosLikeResponse {
+  return (
+    typeof source === 'object' &&
+    source !== null &&
+    'data' in source &&
+    'headers' in source &&
+    !(source instanceof Response)
+  );
+}
+
+function extractAxiosInfo(res: AxiosLikeResponse): { buffer: Uint8Array; mimetype?: string; charset?: string; filename?: string; url?: string } {
+  const data = res.data;
+  const buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
+
+  const contentType = String(res.headers['content-type'] ?? '');
+  const [mimeRaw, ...params] = contentType.split(';');
+  const mimetype = mimeRaw.trim() || undefined;
+  let charset: string | undefined;
+  for (const param of params) {
+    const [key, val] = param.split('=').map((s) => s.trim());
+    if (key === 'charset' && val) charset = val;
+  }
+
+  const disposition = String(res.headers['content-disposition'] ?? '');
+  let filename: string | undefined;
+  const fnMatch = disposition.match(/filename[*]?=(?:UTF-8''|"?)([^";]+)/i);
+  if (fnMatch) filename = decodeURIComponent(fnMatch[1]);
+
+  const url = res.config?.url;
+
+  return { buffer, mimetype, charset, filename, url };
+}
+
 /**
  * Convert a file to Markdown in one call.
  *
- * Accepts a file path, URL, data URI, Uint8Array/Buffer, or fetch Response.
+ * Accepts a file path, URL, data URI, Uint8Array/Buffer, fetch Response,
+ * or Axios response.
  */
 export async function markitdown(
-  source: string | Uint8Array | Response,
+  source: string | Uint8Array | Response | AxiosLikeResponse,
   options?: MarkItDownInput,
 ): Promise<ConvertResult> {
   const {
-    filename,
-    mimetype,
-    charset,
+    type,
     keepDataUris,
     allowUrlFetch,
     ...mdOptions
   } = options ?? {};
 
-  const convertOptions: ConvertOptions = {
-    keepDataUris,
-    allowUrlFetch,
-    streamInfo: { filename, mimetype, charset },
-  };
+  const typeInfo = type ? { extension: '.' + type } : {};
   const md = new MarkItDown(mdOptions);
 
   if (typeof source === 'string') {
-    return md.convert(source, convertOptions);
+    return md.convert(source, { keepDataUris, allowUrlFetch, streamInfo: typeInfo });
   }
+
   if (source instanceof Response) {
-    return md.convertResponse(source, convertOptions);
+    return md.convertResponse(source, { keepDataUris, allowUrlFetch, streamInfo: typeInfo });
   }
-  return md.convertBuffer(source, convertOptions);
+
+  if (isAxiosLike(source)) {
+    const ax = extractAxiosInfo(source);
+    return md.convertBuffer(ax.buffer, {
+      keepDataUris,
+      allowUrlFetch,
+      streamInfo: {
+        mimetype: ax.mimetype,
+        charset: ax.charset,
+        filename: ax.filename,
+        url: ax.url,
+        ...typeInfo,
+      },
+    });
+  }
+
+  // Uint8Array / Buffer
+  return md.convertBuffer(source, { keepDataUris, allowUrlFetch, streamInfo: typeInfo });
 }
 
 export type {
