@@ -555,26 +555,35 @@ export class PdfConverter implements DocumentConverter {
       throw new MissingDependencyError('pdfjs-dist', 'pnpm add pdfjs-dist');
     }
 
-    // Resolve the pdfjs-dist build directory. import.meta.resolve works in ESM
-    // but tsup's CJS shim sets import_meta = {}, so we fall back to
-    // require.resolve (works in CJS/Node) or createRequire (works everywhere).
+    // Resolve the pdfjs-dist build directory for worker and font paths.
+    // import.meta.resolve works in ESM but tsup's CJS shim sets import_meta = {},
+    // so we fall back to createRequire anchored to import.meta.url (ESM entry)
+    // or to THIS file's path via __filename (CJS entry).
     let pdfjsBuildDir: string | undefined;
     try {
-      const { dirname, join } = await import('path');
+      const { dirname } = await import('path');
+      // Strategy 1: ESM import.meta.resolve
       try {
         const { fileURLToPath } = await import('url');
         pdfjsBuildDir = dirname(
           fileURLToPath(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')),
         );
       } catch {
-        // CJS fallback: use createRequire to resolve the package path
+        // Strategy 2: createRequire from this file's URL or path
         const { createRequire } = await import('module');
-        const req = createRequire(join(process.cwd(), '__placeholder.js'));
-        const resolvedPath = req.resolve('pdfjs-dist/legacy/build/pdf.mjs');
-        pdfjsBuildDir = dirname(resolvedPath);
+        const anchor =
+          (typeof import.meta.url === 'string' && import.meta.url.startsWith('file:'))
+            ? import.meta.url
+            : (typeof __filename === 'string')
+              ? __filename
+              : undefined;
+        if (anchor) {
+          const req = createRequire(anchor);
+          pdfjsBuildDir = dirname(req.resolve('pdfjs-dist/legacy/build/pdf.mjs'));
+        }
       }
     } catch {
-      // Neither ESM nor CJS resolution worked
+      // Neither resolution strategy worked — fonts/worker may be unavailable
     }
 
     // Configure worker for Node.js / Edge / serverless environments

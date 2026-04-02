@@ -2661,7 +2661,7 @@ var PdfConverter = class {
     }
     let pdfjsBuildDir;
     try {
-      const { dirname, join } = await import("path");
+      const { dirname } = await import("path");
       try {
         const { fileURLToPath } = await import("url");
         pdfjsBuildDir = dirname(
@@ -2669,9 +2669,11 @@ var PdfConverter = class {
         );
       } catch {
         const { createRequire } = await import("module");
-        const req = createRequire(join(process.cwd(), "__placeholder.js"));
-        const resolvedPath = req.resolve("pdfjs-dist/legacy/build/pdf.mjs");
-        pdfjsBuildDir = dirname(resolvedPath);
+        const anchor = typeof import_meta.url === "string" && import_meta.url.startsWith("file:") ? import_meta.url : typeof __filename === "string" ? __filename : void 0;
+        if (anchor) {
+          const req = createRequire(anchor);
+          pdfjsBuildDir = dirname(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
+        }
       }
     } catch {
     }
