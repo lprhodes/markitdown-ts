@@ -555,21 +555,34 @@ export class PdfConverter implements DocumentConverter {
       throw new MissingDependencyError('pdfjs-dist', 'pnpm add pdfjs-dist');
     }
 
-    // Configure worker for Node.js / Edge / serverless environments
-    // In pdfjs-dist v5+, Node.js auto-disables the worker but still needs workerSrc set.
-    // We set it to a path that resolves to the actual worker file.
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    // Resolve the pdfjs-dist build directory. import.meta.resolve works in ESM
+    // but tsup's CJS shim sets import_meta = {}, so we fall back to
+    // require.resolve (works in CJS/Node) or createRequire (works everywhere).
+    let pdfjsBuildDir: string | undefined;
+    try {
+      const { dirname, join } = await import('path');
       try {
-        // Resolve the worker path relative to the pdfjs-dist package
         const { fileURLToPath } = await import('url');
-        const { dirname, join } = await import('path');
-        const pdfjsPath = dirname(
+        pdfjsBuildDir = dirname(
           fileURLToPath(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')),
         );
-        pdfjsLib.GlobalWorkerOptions.workerSrc = join(pdfjsPath, 'pdf.worker.mjs');
       } catch {
-        // If resolution fails, set a dummy path. The fake worker setup
-        // in Node.js will still work as long as it can import.
+        // CJS fallback: use createRequire to resolve the package path
+        const { createRequire } = await import('module');
+        const req = createRequire(join(process.cwd(), '__placeholder.js'));
+        const resolvedPath = req.resolve('pdfjs-dist/legacy/build/pdf.mjs');
+        pdfjsBuildDir = dirname(resolvedPath);
+      }
+    } catch {
+      // Neither ESM nor CJS resolution worked
+    }
+
+    // Configure worker for Node.js / Edge / serverless environments
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      if (pdfjsBuildDir) {
+        const { join } = await import('path');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = join(pdfjsBuildDir, 'pdf.worker.mjs');
+      } else {
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.mjs';
       }
     }
@@ -578,16 +591,9 @@ export class PdfConverter implements DocumentConverter {
 
     // Resolve the standard fonts directory for proper rendering
     let standardFontDataUrl: string | undefined;
-    try {
-      const { fileURLToPath } = await import('url');
-      const { dirname, join } = await import('path');
-      const pdfjsPath = dirname(
-        fileURLToPath(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')),
-      );
-      const fontsDir = join(pdfjsPath, '..', '..', 'standard_fonts/');
-      standardFontDataUrl = fontsDir;
-    } catch {
-      // Fall through — some PDFs will show warnings but still work
+    if (pdfjsBuildDir) {
+      const { join } = await import('path');
+      standardFontDataUrl = join(pdfjsBuildDir, '..', '..', 'standard_fonts/');
     }
 
     const loadingTask = pdfjsLib.getDocument({
