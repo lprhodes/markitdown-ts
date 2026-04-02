@@ -182,6 +182,45 @@ export async function POST(request: Request) {
 }
 ```
 
+### Vercel Blob (Unknown File Type)
+
+```typescript
+import { MarkItDown } from '@lprhodes/markitdown-ts';
+import { head } from '@vercel/blob';
+
+const md = new MarkItDown();
+
+async function convertBlob(blobUrl: string) {
+  // Get blob metadata -- contentType and pathname are set by Vercel Blob
+  const blobInfo = await head(blobUrl);
+
+  // Fetch the blob content
+  const response = await fetch(blobUrl);
+  const buffer = new Uint8Array(await response.arrayBuffer());
+
+  // Let markitdown detect the format from the content type and filename
+  const result = await md.convertBuffer(buffer, {
+    streamInfo: {
+      filename: blobInfo.pathname,
+      mimetype: blobInfo.contentType,
+    },
+  });
+
+  return result.markdown;
+}
+```
+
+Or use `convertResponse` directly to let markitdown extract metadata from the response headers:
+
+```typescript
+async function convertBlob(blobUrl: string) {
+  const response = await fetch(blobUrl);
+  const result = await md.convertResponse(response);
+
+  return result.markdown;
+}
+```
+
 ### Express API Route (Node.js)
 
 ```typescript
