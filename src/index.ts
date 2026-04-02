@@ -52,12 +52,12 @@ export interface MarkItDownInput extends MarkItDownOptions {
 
 /** Duck-type check for Axios-style responses */
 interface AxiosLikeResponse {
-  data: ArrayBuffer | Uint8Array | Buffer;
+  data: unknown;
   headers: Record<string, unknown> & {
     'content-type'?: string;
     'content-disposition'?: string;
   };
-  config?: { url?: string };
+  config?: { url?: string; responseType?: string };
 }
 
 function isAxiosLike(source: unknown): source is AxiosLikeResponse {
@@ -70,9 +70,18 @@ function isAxiosLike(source: unknown): source is AxiosLikeResponse {
   );
 }
 
+function toBuffer(data: unknown): Uint8Array {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (typeof data === 'string') return new TextEncoder().encode(data);
+  throw new Error(
+    'Axios response data must be an ArrayBuffer or Buffer. ' +
+    'Set responseType: "arraybuffer" in your Axios request for binary files.',
+  );
+}
+
 function extractAxiosInfo(res: AxiosLikeResponse): { buffer: Uint8Array; mimetype?: string; charset?: string; filename?: string; url?: string } {
-  const data = res.data;
-  const buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const buffer = toBuffer(res.data);
 
   const contentType = String(res.headers['content-type'] ?? '');
   const [mimeRaw, ...params] = contentType.split(';');

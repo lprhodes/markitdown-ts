@@ -106,6 +106,7 @@ console.log(result.markdown);
 import axios from 'axios';
 import { markitdown } from '@lprhodes/markitdown-ts';
 
+// Use responseType: 'arraybuffer' for binary files (PDF, DOCX, XLSX, PPTX, etc.)
 const response = await axios.get('https://example.com/report.pdf', {
   responseType: 'arraybuffer',
 });
@@ -114,6 +115,13 @@ const response = await axios.get('https://example.com/report.pdf', {
 const result = await markitdown(response);
 
 console.log(result.markdown);
+```
+
+For text-based formats (HTML, CSV, XML, JSON), the default response type works fine:
+
+```typescript
+const response = await axios.get('https://example.com/page.html');
+const result = await markitdown(response);
 ```
 
 ### Convert a fetch Response
