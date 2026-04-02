@@ -555,21 +555,35 @@ export class PdfConverter implements DocumentConverter {
       throw new MissingDependencyError('pdfjs-dist', 'pnpm add pdfjs-dist');
     }
 
-    // Resolve the pdfjs-dist build directory for worker and font paths.
+    // Pre-load the worker message handler on the main thread. pdfjs-dist's
+    // Node.js "fake worker" setup tries to dynamically import pdf.worker.mjs
+    // relative to the main module path, which fails when bundlers (Next.js,
+    // webpack, turbopack) relocate the code to chunk directories. By loading
+    // the worker module and setting globalThis.pdfjsWorker, we bypass the
+    // file-path-based import entirely.
+    if (!(globalThis as any).pdfjsWorker) {
+      try {
+        const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+        (globalThis as any).pdfjsWorker = workerModule;
+      } catch {
+        // Worker pre-load failed — pdfjs will fall back to its own resolution
+      }
+    }
+
+    // Resolve pdfjs-dist package location for standard fonts.
     // import.meta.resolve works in ESM but tsup's CJS shim sets import_meta = {},
-    // so we fall back to createRequire anchored to import.meta.url (ESM entry)
-    // or to THIS file's path via __filename (CJS entry).
-    let pdfjsBuildDir: string | undefined;
+    // so we fall back to createRequire anchored to __filename (CJS).
+    // In bundled environments (Next.js), neither works — fonts are optional.
+    let standardFontDataUrl: string | undefined;
     try {
-      const { dirname } = await import('path');
-      // Strategy 1: ESM import.meta.resolve
+      const { dirname, join } = await import('path');
+      let pdfjsBuildDir: string | undefined;
       try {
         const { fileURLToPath } = await import('url');
         pdfjsBuildDir = dirname(
           fileURLToPath(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')),
         );
       } catch {
-        // Strategy 2: createRequire from this file's URL or path
         const { createRequire } = await import('module');
         const anchor =
           (typeof import.meta.url === 'string' && import.meta.url.startsWith('file:'))
@@ -582,28 +596,14 @@ export class PdfConverter implements DocumentConverter {
           pdfjsBuildDir = dirname(req.resolve('pdfjs-dist/legacy/build/pdf.mjs'));
         }
       }
-    } catch {
-      // Neither resolution strategy worked — fonts/worker may be unavailable
-    }
-
-    // Configure worker for Node.js / Edge / serverless environments
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
       if (pdfjsBuildDir) {
-        const { join } = await import('path');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = join(pdfjsBuildDir, 'pdf.worker.mjs');
-      } else {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.mjs';
+        standardFontDataUrl = join(pdfjsBuildDir, '..', '..', 'standard_fonts/');
       }
+    } catch {
+      // Font path resolution failed — PDFs with standard fonts may show warnings
     }
 
     const buffer = await input.buffer();
-
-    // Resolve the standard fonts directory for proper rendering
-    let standardFontDataUrl: string | undefined;
-    if (pdfjsBuildDir) {
-      const { join } = await import('path');
-      standardFontDataUrl = join(pdfjsBuildDir, '..', '..', 'standard_fonts/');
-    }
 
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),

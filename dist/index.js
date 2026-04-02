@@ -1885,9 +1885,17 @@ var PdfConverter = class {
     } catch {
       throw new MissingDependencyError("pdfjs-dist", "pnpm add pdfjs-dist");
     }
-    let pdfjsBuildDir;
+    if (!globalThis.pdfjsWorker) {
+      try {
+        const workerModule = await import("pdfjs-dist/legacy/build/pdf.worker.mjs");
+        globalThis.pdfjsWorker = workerModule;
+      } catch {
+      }
+    }
+    let standardFontDataUrl;
     try {
-      const { dirname } = await import("path");
+      const { dirname, join } = await import("path");
+      let pdfjsBuildDir;
       try {
         const { fileURLToPath } = await import("url");
         pdfjsBuildDir = dirname(
@@ -1901,22 +1909,12 @@ var PdfConverter = class {
           pdfjsBuildDir = dirname(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
         }
       }
+      if (pdfjsBuildDir) {
+        standardFontDataUrl = join(pdfjsBuildDir, "..", "..", "standard_fonts/");
+      }
     } catch {
     }
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      if (pdfjsBuildDir) {
-        const { join } = await import("path");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = join(pdfjsBuildDir, "pdf.worker.mjs");
-      } else {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.mjs";
-      }
-    }
     const buffer = await input.buffer();
-    let standardFontDataUrl;
-    if (pdfjsBuildDir) {
-      const { join } = await import("path");
-      standardFontDataUrl = join(pdfjsBuildDir, "..", "..", "standard_fonts/");
-    }
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
       useWorkerFetch: false,
