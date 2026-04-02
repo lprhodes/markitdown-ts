@@ -128,7 +128,7 @@ export class XlsxConverter implements DocumentConverter {
   private formatCell(value: unknown): string {
     if (value == null) return '';
     if (value instanceof Date) {
-      return value.toISOString();
+      return isNaN(value.getTime()) ? String(value) : value.toISOString();
     }
     if (typeof value === 'object') {
       // ExcelJS rich text: { richText: [{text: '...'}] }
