@@ -105,9 +105,7 @@ console.log(result.markdown);
 ```typescript
 import { markitdown } from '@lprhodes/markitdown-ts';
 
-const result = await markitdown(buffer, {
-  streamInfo: { filename: 'report.pdf' },
-});
+const result = await markitdown(buffer, { filename: 'report.pdf' });
 
 console.log(result.markdown);
 ```
@@ -136,9 +134,7 @@ export async function POST(request: Request) {
   const file = formData.get('file') as File;
 
   const buffer = new Uint8Array(await file.arrayBuffer());
-  const result = await markitdown(buffer, {
-    streamInfo: { filename: file.name },
-  });
+  const result = await markitdown(buffer, { filename: file.name });
 
   return Response.json({ markdown: result.markdown });
 }
@@ -154,9 +150,7 @@ import { markitdown } from '@lprhodes/markitdown-ts';
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.post('/convert', upload.single('file'), async (req, res) => {
-  const result = await markitdown(req.file.buffer, {
-    streamInfo: { filename: req.file.originalname },
-  });
+  const result = await markitdown(req.file.buffer, { filename: req.file.originalname });
   res.json({ markdown: result.markdown });
 });
 ```
@@ -180,7 +174,7 @@ Or with a custom callback:
 
 ```typescript
 const result = await markitdown(imageBuffer, {
-  streamInfo: { filename: 'diagram.png' },
+  filename: 'diagram.png',
   llmCaption: async (buffer, mimeType) => {
     return await myVisionApi.describe(buffer, mimeType);
   },
@@ -265,9 +259,7 @@ import {
 } from '@lprhodes/markitdown-ts';
 
 try {
-  const result = await markitdown(buffer, {
-    streamInfo: { filename: 'file.pdf' },
-  });
+  const result = await markitdown(buffer, { filename: 'file.pdf' });
 } catch (err) {
   if (err instanceof MissingDependencyError) {
     // e.g. "Missing dependency: pdfjs-dist. Install it with: pnpm add pdfjs-dist"

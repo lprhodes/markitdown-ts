@@ -4,28 +4,42 @@ import type { MarkItDownOptions, ConvertOptions, ConvertResult } from './types.j
 
 export { MarkItDown };
 
+export interface MarkItDownInput extends MarkItDownOptions {
+  /** Filename hint for format detection (e.g. 'report.pdf') */
+  filename?: string;
+  /** MIME type hint (e.g. 'application/pdf') */
+  mimetype?: string;
+  /** Character encoding hint (e.g. 'utf-8') */
+  charset?: string;
+  /** Preserve base64 data URIs in output (default: false) */
+  keepDataUris?: boolean;
+  /** Allow fetching http/https URLs (default: false, SSRF protection) */
+  allowUrlFetch?: boolean;
+}
+
 /**
  * Convert a file to Markdown in one call.
  *
  * Accepts a file path, URL, data URI, Uint8Array/Buffer, or fetch Response.
- * Optionally pass MarkItDownOptions as a second argument to configure the
- * converter instance, and ConvertOptions as a third to control per-call
- * behaviour.
  */
 export async function markitdown(
   source: string | Uint8Array | Response,
-  options?: MarkItDownOptions & ConvertOptions,
+  options?: MarkItDownInput,
 ): Promise<ConvertResult> {
   const {
-    // ConvertOptions fields
-    streamInfo,
+    filename,
+    mimetype,
+    charset,
     keepDataUris,
     allowUrlFetch,
-    // Everything else is MarkItDownOptions
     ...mdOptions
   } = options ?? {};
 
-  const convertOptions: ConvertOptions = { streamInfo, keepDataUris, allowUrlFetch };
+  const convertOptions: ConvertOptions = {
+    keepDataUris,
+    allowUrlFetch,
+    streamInfo: { filename, mimetype, charset },
+  };
   const md = new MarkItDown(mdOptions);
 
   if (typeof source === 'string') {
