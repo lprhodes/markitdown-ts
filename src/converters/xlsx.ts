@@ -63,16 +63,35 @@ export class XlsxConverter implements DocumentConverter {
 
       worksheet.eachRow((row) => {
         const cells: string[] = [];
-        // row.values is 1-indexed (index 0 is undefined)
-        const values = row.values as any[];
-        for (let i = 1; i < values.length; i++) {
-          cells.push(this.formatCell(values[i]));
+        // Use cell API to detect merged cells. For non-master merged cells,
+        // emit empty string to avoid duplicating the master cell's value
+        // across all cells in the merge range.
+        const colCount = row.cellCount;
+        for (let col = 1; col <= colCount; col++) {
+          const cell = row.getCell(col);
+          if (cell.isMerged && cell.master !== cell) {
+            cells.push('');
+          } else {
+            cells.push(this.formatCell(cell.value));
+          }
         }
-        if (cells.length > maxCols) maxCols = cells.length;
         rows.push(cells);
       });
 
       if (rows.length === 0) {
+        mdContent += '\n';
+        return;
+      }
+
+      // Strip trailing empty cells from each row, then compute maxCols
+      for (const row of rows) {
+        while (row.length > 0 && row[row.length - 1] === '') {
+          row.pop();
+        }
+        if (row.length > maxCols) maxCols = row.length;
+      }
+
+      if (maxCols === 0) {
         mdContent += '\n';
         return;
       }
@@ -84,19 +103,27 @@ export class XlsxConverter implements DocumentConverter {
         }
       }
 
+      // Skip entirely empty rows (all cells empty after merge dedup)
+      const nonEmptyRows = rows.filter(row => row.some(cell => cell !== ''));
+      if (nonEmptyRows.length === 0) {
+        mdContent += '\n';
+        return;
+      }
+
       // First row is header
-      const header = rows[0];
+      const header = nonEmptyRows[0];
       mdContent += '| ' + header.join(' | ') + ' |\n';
       mdContent += '| ' + header.map(() => '---').join(' | ') + ' |\n';
 
-      for (let i = 1; i < rows.length; i++) {
-        mdContent += '| ' + rows[i].join(' | ') + ' |\n';
+      for (let i = 1; i < nonEmptyRows.length; i++) {
+        mdContent += '| ' + nonEmptyRows[i].join(' | ') + ' |\n';
       }
 
-      // Extract cell comments/notes
+      // Extract cell comments/notes (only from master cells)
       const comments: { cell: string; text: string }[] = [];
       worksheet.eachRow((row, rowNumber) => {
         row.eachCell((cell, colNumber) => {
+          if (cell.isMerged && cell.master !== cell) return;
           if (cell.note) {
             const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
             let text: string;

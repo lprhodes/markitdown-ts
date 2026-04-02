@@ -1572,14 +1572,28 @@ var XlsxConverter = class {
       let maxCols = 0;
       worksheet.eachRow((row) => {
         const cells = [];
-        const values = row.values;
-        for (let i = 1; i < values.length; i++) {
-          cells.push(this.formatCell(values[i]));
+        const colCount = row.cellCount;
+        for (let col = 1; col <= colCount; col++) {
+          const cell = row.getCell(col);
+          if (cell.isMerged && cell.master !== cell) {
+            cells.push("");
+          } else {
+            cells.push(this.formatCell(cell.value));
+          }
         }
-        if (cells.length > maxCols) maxCols = cells.length;
         rows.push(cells);
       });
       if (rows.length === 0) {
+        mdContent += "\n";
+        return;
+      }
+      for (const row of rows) {
+        while (row.length > 0 && row[row.length - 1] === "") {
+          row.pop();
+        }
+        if (row.length > maxCols) maxCols = row.length;
+      }
+      if (maxCols === 0) {
         mdContent += "\n";
         return;
       }
@@ -1588,15 +1602,21 @@ var XlsxConverter = class {
           row.push("");
         }
       }
-      const header = rows[0];
+      const nonEmptyRows = rows.filter((row) => row.some((cell) => cell !== ""));
+      if (nonEmptyRows.length === 0) {
+        mdContent += "\n";
+        return;
+      }
+      const header = nonEmptyRows[0];
       mdContent += "| " + header.join(" | ") + " |\n";
       mdContent += "| " + header.map(() => "---").join(" | ") + " |\n";
-      for (let i = 1; i < rows.length; i++) {
-        mdContent += "| " + rows[i].join(" | ") + " |\n";
+      for (let i = 1; i < nonEmptyRows.length; i++) {
+        mdContent += "| " + nonEmptyRows[i].join(" | ") + " |\n";
       }
       const comments = [];
       worksheet.eachRow((row, rowNumber) => {
         row.eachCell((cell, colNumber) => {
+          if (cell.isMerged && cell.master !== cell) return;
           if (cell.note) {
             const cellRef = `${String.fromCharCode(64 + colNumber)}${rowNumber}`;
             let text;
