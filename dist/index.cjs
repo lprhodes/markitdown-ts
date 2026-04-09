@@ -2714,42 +2714,82 @@ var PdfConverter = class {
     const doc = await loadingTask.promise;
     try {
       const markdownChunks = [];
+      const pageErrors = [];
       let formPageCount = 0;
       for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-        const page = await doc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1 });
-        const pageHeight = viewport.height;
-        const pageWidth = viewport.width;
+        let page = null;
         try {
-          const textContent = await page.getTextContent();
-          const textItems = textContent.items.filter(
-            (item) => "str" in item
-          );
-          if (textItems.length > 0) {
-            const words = extractWords(textItems, pageHeight);
-            const formContent = extractFormContentFromWords(words, pageWidth);
-            if (formContent !== null) {
-              formPageCount++;
-              if (formContent.trim()) {
-                markdownChunks.push(formContent);
-              }
-            } else {
-              const simpleText = extractSimpleText(textItems, pageHeight);
-              if (simpleText.trim()) {
-                markdownChunks.push(simpleText.trim());
+          page = await doc.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1 });
+          const pageHeight = viewport.height;
+          const pageWidth = viewport.width;
+          try {
+            const textContent = await page.getTextContent();
+            const textItems = textContent.items.filter(
+              (item) => "str" in item
+            );
+            if (textItems.length > 0) {
+              const words = extractWords(textItems, pageHeight);
+              const formContent = extractFormContentFromWords(words, pageWidth);
+              if (formContent !== null) {
+                formPageCount++;
+                if (formContent.trim()) {
+                  markdownChunks.push(formContent);
+                }
+              } else {
+                const simpleText = extractSimpleText(textItems, pageHeight);
+                if (simpleText.trim()) {
+                  markdownChunks.push(simpleText.trim());
+                }
               }
             }
+          } catch (textErr) {
+            pageErrors.push({
+              pageNum,
+              error: `text extraction: ${textErr instanceof Error ? textErr.message : String(textErr)}`
+            });
           }
-          const commentSection = await extractAnnotationComments(page);
-          if (commentSection) {
-            markdownChunks.push(commentSection);
+          try {
+            const commentSection = await extractAnnotationComments(page);
+            if (commentSection) {
+              markdownChunks.push(commentSection);
+            }
+          } catch (annotErr) {
+            pageErrors.push({
+              pageNum,
+              error: `annotations: ${annotErr instanceof Error ? annotErr.message : String(annotErr)}`
+            });
           }
+        } catch (pageErr) {
+          pageErrors.push({
+            pageNum,
+            error: `page load: ${pageErr instanceof Error ? pageErr.message : String(pageErr)}`
+          });
         } finally {
-          page.cleanup();
+          if (page) {
+            try {
+              page.cleanup();
+            } catch {
+            }
+          }
         }
       }
       let markdown = markdownChunks.join("\n\n").trim();
       markdown = mergePartialNumberingLines(markdown);
+      if (pageErrors.length === doc.numPages && !markdown.trim()) {
+        const errorSummary = pageErrors.map((e) => `page ${e.pageNum}: ${e.error}`).join(" | ");
+        throw new Error(
+          `PDF conversion failed on all ${doc.numPages} page(s): ${errorSummary}`
+        );
+      }
+      if (pageErrors.length > 0) {
+        const errorNote = pageErrors.map((e) => `- page ${e.pageNum}: ${e.error}`).join("\n");
+        markdown = `> _Note: ${pageErrors.length} of ${doc.numPages} page(s) had extraction errors:_
+>
+${errorNote.replace(/^/gm, "> ")}
+
+${markdown}`;
+      }
       return { markdown };
     } finally {
       await doc.destroy();

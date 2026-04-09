@@ -640,49 +640,83 @@ export class PdfConverter implements DocumentConverter {
 
     try {
       const markdownChunks: string[] = [];
+      const pageErrors: Array<{ pageNum: number; error: string }> = [];
       let formPageCount = 0;
 
       for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-        const page = await doc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 1.0 });
-        const pageHeight = viewport.height;
-        const pageWidth = viewport.width;
-
+        // Wrap each page in try/catch so one malformed page does not kill
+        // extraction of the entire document. pdfjs-dist can throw from
+        // getPage/getViewport/getTextContent/getAnnotations for a variety
+        // of reasons (corrupt streams, unsupported encodings, missing
+        // fonts, XFA forms, etc). We record per-page errors but keep going.
+        let page: any = null;
         try {
-          const textContent = await page.getTextContent();
+          page = await doc.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 1.0 });
+          const pageHeight = viewport.height;
+          const pageWidth = viewport.width;
 
-          // Filter to TextItem only (exclude TextMarkedContent)
-          const textItems = textContent.items.filter(
-            (item): item is { str: string; dir: string; transform: number[]; width: number; height: number; fontName: string; hasEOL: boolean } =>
-              'str' in item,
-          );
+          // Text extraction — individually wrapped so annotation extraction
+          // can still run even if text extraction fails, and vice versa.
+          try {
+            const textContent = await page.getTextContent();
 
-          if (textItems.length > 0) {
-            // Try spatial analysis first (form/table detection)
-            const words = extractWords(textItems, pageHeight);
-            const formContent = extractFormContentFromWords(words, pageWidth);
+            // Filter to TextItem only (exclude TextMarkedContent)
+            const textItems = textContent.items.filter(
+              (item): item is { str: string; dir: string; transform: number[]; width: number; height: number; fontName: string; hasEOL: boolean } =>
+                'str' in item,
+            );
 
-            if (formContent !== null) {
-              formPageCount++;
-              if (formContent.trim()) {
-                markdownChunks.push(formContent);
-              }
-            } else {
-              // Fall back to simple text extraction
-              const simpleText = extractSimpleText(textItems, pageHeight);
-              if (simpleText.trim()) {
-                markdownChunks.push(simpleText.trim());
+            if (textItems.length > 0) {
+              // Try spatial analysis first (form/table detection)
+              const words = extractWords(textItems, pageHeight);
+              const formContent = extractFormContentFromWords(words, pageWidth);
+
+              if (formContent !== null) {
+                formPageCount++;
+                if (formContent.trim()) {
+                  markdownChunks.push(formContent);
+                }
+              } else {
+                // Fall back to simple text extraction
+                const simpleText = extractSimpleText(textItems, pageHeight);
+                if (simpleText.trim()) {
+                  markdownChunks.push(simpleText.trim());
+                }
               }
             }
+          } catch (textErr) {
+            pageErrors.push({
+              pageNum,
+              error: `text extraction: ${textErr instanceof Error ? textErr.message : String(textErr)}`,
+            });
           }
 
-          // Extract annotations/comments
-          const commentSection = await extractAnnotationComments(page);
-          if (commentSection) {
-            markdownChunks.push(commentSection);
+          // Annotations — independent from text extraction
+          try {
+            const commentSection = await extractAnnotationComments(page);
+            if (commentSection) {
+              markdownChunks.push(commentSection);
+            }
+          } catch (annotErr) {
+            pageErrors.push({
+              pageNum,
+              error: `annotations: ${annotErr instanceof Error ? annotErr.message : String(annotErr)}`,
+            });
           }
+        } catch (pageErr) {
+          pageErrors.push({
+            pageNum,
+            error: `page load: ${pageErr instanceof Error ? pageErr.message : String(pageErr)}`,
+          });
         } finally {
-          page.cleanup();
+          if (page) {
+            try {
+              page.cleanup();
+            } catch {
+              /* cleanup errors are non-fatal */
+            }
+          }
         }
       }
 
@@ -694,6 +728,31 @@ export class PdfConverter implements DocumentConverter {
 
       // Post-process to merge MasterFormat-style partial numbering
       markdown = mergePartialNumberingLines(markdown);
+
+      // If every page errored out AND we collected no content, surface
+      // the per-page error details as a hard failure. A PDF where every
+      // page throws is not a successful conversion.
+      //
+      // A PDF with zero text items but no errors (e.g. a scanned/image-only
+      // PDF) is a valid empty result — callers should OCR separately.
+      if (pageErrors.length === doc.numPages && !markdown.trim()) {
+        const errorSummary = pageErrors
+          .map((e) => `page ${e.pageNum}: ${e.error}`)
+          .join(' | ');
+        throw new Error(
+          `PDF conversion failed on all ${doc.numPages} page(s): ${errorSummary}`,
+        );
+      }
+
+      // If we got some content but also had per-page errors, prepend a
+      // warning note so callers can surface partial-extraction issues.
+      if (pageErrors.length > 0) {
+        const errorNote = pageErrors
+          .map((e) => `- page ${e.pageNum}: ${e.error}`)
+          .join('\n');
+        markdown =
+          `> _Note: ${pageErrors.length} of ${doc.numPages} page(s) had extraction errors:_\n>\n${errorNote.replace(/^/gm, '> ')}\n\n${markdown}`;
+      }
 
       return { markdown };
     } finally {
