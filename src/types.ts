@@ -58,6 +58,33 @@ export interface NodeServices {
   readFile?: (path: string) => Promise<Uint8Array>;
   exiftool?: (input: ConverterInput, info: StreamInfo) => Promise<Record<string, unknown>>;
   transcribeAudio?: (input: ConverterInput, info: StreamInfo) => Promise<string>;
+  /**
+   * Pre-resolved pdfjs-dist module (the namespace from
+   * `import('pdfjs-dist/legacy/build/pdf.mjs')`). Provide this when the
+   * consumer cannot rely on Node.js resolving `pdfjs-dist` via walk-up
+   * from markitdown-ts's location — for example in bundled serverless
+   * environments (Next.js on Vercel with pnpm) where markitdown-ts is
+   * loaded outside the bundler's module graph and the peer-dependency
+   * symlink can't be reached at runtime.
+   *
+   * When provided, PdfConverter uses this module directly instead of
+   * attempting a dynamic import.
+   */
+  pdfjsLib?: unknown;
+  /**
+   * Optional pre-resolved pdfjs-dist worker module. Providing this
+   * avoids the secondary `await import('pdfjs-dist/legacy/build/pdf.worker.mjs')`
+   * that markitdown-ts otherwise performs inside PdfConverter. Same
+   * rationale as pdfjsLib.
+   */
+  pdfjsWorker?: unknown;
+  /**
+   * Optional standard fonts directory URL used by pdfjs-dist. When the
+   * consumer injects pdfjsLib, markitdown-ts cannot derive this path from
+   * the package location, so it must be supplied explicitly (or left
+   * undefined to skip font loading).
+   */
+  pdfjsStandardFontDataUrl?: string;
 }
 
 export interface MarkItDownOptions {

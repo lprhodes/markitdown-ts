@@ -548,11 +548,26 @@ export class PdfConverter implements DocumentConverter {
     _info: StreamInfo,
     _opts: InternalConvertOptions,
   ): Promise<ConvertResult | null> {
+    const injected = _opts.nodeServices;
+
+    // Prefer an injected pdfjs-dist module when the consumer has provided
+    // one (e.g. via MarkItDownOptions.nodeServices.pdfjsLib). This is
+    // required in bundled serverless environments (Next.js on Vercel with
+    // pnpm) where markitdown-ts is loaded outside the bundler's module
+    // graph and Node can't walk up to find pdfjs-dist at runtime.
     let pdfjsLib: typeof import('pdfjs-dist/legacy/build/pdf.mjs');
-    try {
-      pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    } catch {
-      throw new MissingDependencyError('pdfjs-dist', 'pnpm add pdfjs-dist');
+    if (injected?.pdfjsLib) {
+      pdfjsLib = injected.pdfjsLib as typeof import('pdfjs-dist/legacy/build/pdf.mjs');
+    } else {
+      try {
+        pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      } catch (err) {
+        throw new MissingDependencyError(
+          'pdfjs-dist',
+          'pnpm add pdfjs-dist, or pass nodeServices.pdfjsLib to MarkItDown for bundled/serverless environments. Underlying resolution error: '
+            + (err instanceof Error ? `${err.name}: ${err.message}` : String(err)),
+        );
+      }
     }
 
     // Pre-load the worker message handler on the main thread. pdfjs-dist's
@@ -562,45 +577,52 @@ export class PdfConverter implements DocumentConverter {
     // the worker module and setting globalThis.pdfjsWorker, we bypass the
     // file-path-based import entirely.
     if (!(globalThis as any).pdfjsWorker) {
-      try {
-        const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
-        (globalThis as any).pdfjsWorker = workerModule;
-      } catch {
-        // Worker pre-load failed — pdfjs will fall back to its own resolution
+      if (injected?.pdfjsWorker) {
+        (globalThis as any).pdfjsWorker = injected.pdfjsWorker;
+      } else {
+        try {
+          const workerModule = await import('pdfjs-dist/legacy/build/pdf.worker.mjs');
+          (globalThis as any).pdfjsWorker = workerModule;
+        } catch {
+          // Worker pre-load failed — pdfjs will fall back to its own resolution
+        }
       }
     }
 
     // Resolve pdfjs-dist package location for standard fonts.
     // import.meta.resolve works in ESM but tsup's CJS shim sets import_meta = {},
     // so we fall back to createRequire anchored to __filename (CJS).
-    // In bundled environments (Next.js), neither works — fonts are optional.
-    let standardFontDataUrl: string | undefined;
-    try {
-      const { dirname, join } = await import('path');
-      let pdfjsBuildDir: string | undefined;
+    // In bundled environments (Next.js), neither works — fonts are optional
+    // unless the consumer injects nodeServices.pdfjsStandardFontDataUrl.
+    let standardFontDataUrl: string | undefined = injected?.pdfjsStandardFontDataUrl;
+    if (!standardFontDataUrl) {
       try {
-        const { fileURLToPath } = await import('url');
-        pdfjsBuildDir = dirname(
-          fileURLToPath(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')),
-        );
-      } catch {
-        const { createRequire } = await import('module');
-        const anchor =
-          (typeof import.meta.url === 'string' && import.meta.url.startsWith('file:'))
-            ? import.meta.url
-            : (typeof __filename === 'string')
-              ? __filename
-              : undefined;
-        if (anchor) {
-          const req = createRequire(anchor);
-          pdfjsBuildDir = dirname(req.resolve('pdfjs-dist/legacy/build/pdf.mjs'));
+        const { dirname, join } = await import('path');
+        let pdfjsBuildDir: string | undefined;
+        try {
+          const { fileURLToPath } = await import('url');
+          pdfjsBuildDir = dirname(
+            fileURLToPath(import.meta.resolve('pdfjs-dist/legacy/build/pdf.mjs')),
+          );
+        } catch {
+          const { createRequire } = await import('module');
+          const anchor =
+            (typeof import.meta.url === 'string' && import.meta.url.startsWith('file:'))
+              ? import.meta.url
+              : (typeof __filename === 'string')
+                ? __filename
+                : undefined;
+          if (anchor) {
+            const req = createRequire(anchor);
+            pdfjsBuildDir = dirname(req.resolve('pdfjs-dist/legacy/build/pdf.mjs'));
+          }
         }
+        if (pdfjsBuildDir) {
+          standardFontDataUrl = join(pdfjsBuildDir, '..', '..', 'standard_fonts/');
+        }
+      } catch {
+        // Font path resolution failed — PDFs with standard fonts may show warnings
       }
-      if (pdfjsBuildDir) {
-        standardFontDataUrl = join(pdfjsBuildDir, '..', '..', 'standard_fonts/');
-      }
-    } catch {
-      // Font path resolution failed — PDFs with standard fonts may show warnings
     }
 
     const buffer = await input.buffer();

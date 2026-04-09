@@ -1,5 +1,5 @@
-import { M as MarkItDownRegistrar, a as MarkItDownOptions, D as DocumentConverter, C as ConvertOptions, b as ConvertResult } from './types-Cj7TYQWp.js';
-export { c as ConverterInput, d as ConverterRegistration, I as InternalConvertOptions, e as MarkItDownPlugin, N as NodeServices, S as StreamInfo } from './types-Cj7TYQWp.js';
+import { M as MarkItDownRegistrar, a as MarkItDownOptions, D as DocumentConverter, C as ConvertOptions, b as ConvertResult } from './types-1dPdsUYp.js';
+export { c as ConverterInput, d as ConverterRegistration, I as InternalConvertOptions, e as MarkItDownPlugin, N as NodeServices, S as StreamInfo } from './types-1dPdsUYp.js';
 import '@ai-sdk/provider';
 
 declare class MarkItDown implements MarkItDownRegistrar {
