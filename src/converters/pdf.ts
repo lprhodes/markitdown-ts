@@ -405,6 +405,18 @@ function extractFormContentFromWords(
 
 /**
  * Extract words from pdfjs text content items, converting to top-origin coordinates.
+ *
+ * Each pdfjs text item is emitted as a single spatial unit rather than split
+ * into sub-words. pdfjs groups glyphs into text items by proximity during
+ * parsing, so a multi-word chunk like "This chapter sets out requirements"
+ * represents a single contiguous run of prose with one real x-start and a
+ * known width. Splitting it into synthetic sub-words at fabricated
+ * x-positions caused prose lines to be mis-classified as multi-column
+ * tables by `extractFormContentFromWords`, because each fake sub-word
+ * landed at a distinct x-position far enough apart to be counted as its
+ * own column group. This matches pdfplumber's behaviour in the Python
+ * port (pdfplumber's `extract_words` groups glyphs spatially; it does not
+ * invent x-positions by splitting text on whitespace).
  */
 function extractWords(
   items: Array<{ str: string; transform: number[]; width: number; height: number; hasEOL?: boolean }>,
@@ -421,39 +433,18 @@ function extractWords(
     const w = item.width;
     const h = item.height;
 
-    // Convert from PDF coordinates (y increases upward) to top-origin (y increases downward)
+    // Convert from PDF coordinates (y increases upward) to top-origin
+    // (y increases downward).
     const top = pageHeight - y;
     const bottom = top + Math.abs(h);
 
-    // Split text into words to mimic pdfplumber's extract_words behavior
-    // pdfplumber groups characters into words based on proximity;
-    // pdfjs gives us text chunks that can contain spaces.
-    // We split by whitespace but preserve spatial positioning.
-    const subWords = text.split(/\s+/);
-    if (subWords.length === 1) {
-      words.push({
-        text,
-        x0: x,
-        y0: top,
-        x1: x + w,
-        y1: bottom,
-      });
-    } else {
-      // Distribute sub-words proportionally across the width
-      const totalLen = subWords.reduce((sum, sw) => sum + sw.length, 0);
-      let currentX = x;
-      for (const sw of subWords) {
-        const swWidth = (sw.length / totalLen) * w;
-        words.push({
-          text: sw,
-          x0: currentX,
-          y0: top,
-          x1: currentX + swWidth,
-          y1: bottom,
-        });
-        currentX += swWidth + (w / totalLen) * 0.5; // small gap between words
-      }
-    }
+    words.push({
+      text,
+      x0: x,
+      y0: top,
+      x1: x + w,
+      y1: bottom,
+    });
   }
 
   return words;

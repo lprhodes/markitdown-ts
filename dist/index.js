@@ -1791,30 +1791,13 @@ function extractWords(items, pageHeight) {
     const h = item.height;
     const top = pageHeight - y;
     const bottom = top + Math.abs(h);
-    const subWords = text.split(/\s+/);
-    if (subWords.length === 1) {
-      words.push({
-        text,
-        x0: x,
-        y0: top,
-        x1: x + w,
-        y1: bottom
-      });
-    } else {
-      const totalLen = subWords.reduce((sum, sw) => sum + sw.length, 0);
-      let currentX = x;
-      for (const sw of subWords) {
-        const swWidth = sw.length / totalLen * w;
-        words.push({
-          text: sw,
-          x0: currentX,
-          y0: top,
-          x1: currentX + swWidth,
-          y1: bottom
-        });
-        currentX += swWidth + w / totalLen * 0.5;
-      }
-    }
+    words.push({
+      text,
+      x0: x,
+      y0: top,
+      x1: x + w,
+      y1: bottom
+    });
   }
   return words;
 }
